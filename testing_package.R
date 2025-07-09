@@ -1,97 +1,123 @@
-library(metapopbio)
+# Set working directory ---------------------------------------------------
+setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
 
-n_patches <- 2
-n_stages <- 2
-group_by <- "patches"
 
-(P <-
-    metapopbio::vec.perm(n_stages = n_stages,
-                         n_patches = n_patches,
-                         group_by = group_by))
+# Load packages -----------------------------------------------------------
+if (!require("pacman")) {
+  install.packages(pacman)
+  library("pacman")
+}
+p_load(metapopbio)
 
-# Northern
-f11 <- 0.00 
-f12 <- 0.26
-s11 <- 0.72
-s12 <- 0.77
 
-# Southern
-f21 <- 0.00
-f22 <- 0.19  
-s21 <- 0.72
-s22 <- 0.77
+# Load data ---------------------------------------------------------------
+path <- here::here("LMRARW-ICPMM-AR-Demo-Files")
+filename <- "/LMRARW-ICPMM-AR-Demo.xlsm"
+(carp_dat <- spmm.readxl(path, filename))
+## Assign objects from list
+c(n_stages, n_patches, group_by, lh_order, n_timesteps, 
+  stage_names, patch_names, n, matrices, MM, BB) %<-% carp_dat
 
-# Northern
-(B1x <-
-    matrix(c(f11, f12, s11, s12),
-           nrow = n_stages,
-           ncol = n_stages,
-           byrow = TRUE))
-# Southern
-(B2x <-
-    matrix(c(f21, f22, s21, s22),
-           nrow = n_stages,
-           ncol = n_stages,
-           byrow = TRUE))
 
-(BB <- metapopbio::blk.diag(list(B1x, B2x)))
-
-# Juveniles
-dx1 <- 0.27 
-dx2 <- 1 - dx1
-(Mx1 <- matrix(c(dx2, dx1, dx1, dx2),
-               nrow = n_patches,
-               ncol = n_patches,
-               byrow = TRUE))
-# Adults
-(Mx2 <- diag(nrow = n_patches))
-# Block diagonal matrix
-(MM <- metapopbio::blk.diag(list(Mx1, Mx2)))
-
-group_by <- "patches"
-lh_order <- "move"
-(A <-
-    metapopbio::spmm.project.matrix(
-      P = P,
-      BB = BB,
-      MM = MM,
-      group_by = group_by,
-      lh_order = lh_order
-    ))
-
-n <- c(
-  60, 19,  # Northern patch adults then juveniles
-  29, 20   # Southern patch adults then juveniles
-)
-comment(n) <- "patches"  # vector attr for group_by 
-
-n_timesteps <- 100
-
-head(
-  projs <-
-    metapopbio::spmm.project(
-      n = n,
-      A = A,
-      n_timesteps = n_timesteps,
-      n_stages = n_stages,
-      n_patches = n_patches
-    )
+# Project and plot --------------------------------------------------------
+## Automated function
+auto.spmm(
+  path = path,
+  filename = filename,
+  plot = TRUE
 )
 
-stage_names <- c("Juv.", "Adults")
-patch_names <- c("North", "South")
-metapopbio::spmm.plot(
-  projections = projs,
-  ylabs = "Abundance",
-  xlabs = "Years",
-  stage_names = stage_names,
-  patch_names = patch_names
+## "Manual" projection and plotting
+#1. creating the vec-permutation matrix (dimension = stages*patches x stages*patches)
+P <- metapopbio::vec.perm(n_stages = n_stages,
+                          n_patches = n_patches,
+                          group_by = group_by)
+
+#2. Create projection matrix
+A <- spmm.project.matrix(P, #vec-permutation matrix,
+                         BB, #block diagonal matrix for demographic paramters 
+                         MM, #block diagonal for movement paramters
+                         group_by = group_by, #grouping projections (by patches here)
+                         lh_order = lh_order) #order of events (demographic before movement here)
+
+#3. Make projections
+projs <- spmm.project(
+  n = n,  # number of stage/age animals in patch i
+  A = A,
+  BB = BB,
+  MM = MM,
+  P = P,
+  n_timesteps = n_timesteps,
+  n_stages = n_stages,
+  n_patches = n_patches
 )
 
-metapopbio::spmm.project.matrix.sens(A)
-metapopbio::spmm.eig.lambda(A)
-metapopbio::spmm.demo.sens(BB, A, P, MM)
-metapopbio::spmm.demo.elas(BB, A, P, MM)
-metapopbio::spmm.move.sens(MM, A, P, BB)
-metapopbio::spmm.move.elas(MM, A, P, BB)
+#plotting everything:
+spmm.plot(projs, 
+          ylabs = "Rel. Abund.",
+          xlabs = "Years", 
+          stage_names = stage_names,
+          patch_names = patch_names)
+
+
+#testing to plot just a few patches:
+subset <- projs[1:2,]
+comment(subset) <- comment(projs)
+
+spmm.plot(subset, 
+          ylabs = "Rel. Abund.",
+          xlabs = "Years", 
+          stage_names = stage_names,
+          patch_names = patch_names[1])
+
+#making it generalizable
+patch_match <- rep(patch_names, each = n_stages)
+
+ex_patch <- 'MS River & Lower L&Ds'
+
+subset <- projs[which(patch_match == ex_patch),]
+comment(subset) <- comment(projs)
+
+spmm.plot(subset, 
+          ylabs = "Rel. Abund.",
+          xlabs = "Years", 
+          stage_names = stage_names,
+          patch_names = ex_patch)
+
+#### adding in Harvest ####
+projs_harvest <- spmm.project(
+  n = n,  # number of stage/age animals in patch i
+  A = A,
+  BB = BB,
+  MM = MM,
+  P = P,
+  n_timesteps = n_timesteps,
+  n_stages = n_stages,
+  n_patches = n_patches, 
+  harv = 0.2
+  #harv = rep(0.2, nrow(BB))
+  #harv = rep(0.2, nrow(BB)* ncol(BB))
+  #harv = matrix(0.2, nrow = nrow(BB), ncol =  ncol(BB))
+  #harv = rep(0.2, ((nrow(BB)* ncol(BB)) -ncol(BB)) / 2)
+  #harv = rep(0.2, (nrow(BB)* ncol(BB)) -ncol(BB))
+)
+
+ex_patch <- 'MS River & Lower L&Ds'
+
+subset_harv <- projs[which(patch_match == ex_patch),]
+comment(subset_harv) <- comment(projs_harvest)
+
+spmm.plot(subset_harv, 
+          ylabs = "Rel. Abund.",
+          xlabs = "Years", 
+          stage_names = stage_names,
+          patch_names = ex_patch)
+
+spmm.plot2(subset_harv, 
+          ylabs = "Rel. Abund.",
+          xlabs = "Years", 
+          stage_names = stage_names,
+          patch_names = ex_patch)
+
+
 
