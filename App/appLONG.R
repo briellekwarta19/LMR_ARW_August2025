@@ -10,22 +10,17 @@ library(bslib)
 #multiple pages (1st page = data entry, second page = active environment)
 
 #------------------------------------------------#
-# path <- here::here("App")
-# filename <- "/LMRARW-ICPMM-AR-Demo.xlsm"
-# (carp_dat <- spmm.readxl(here::here("App"), filename))
-
 filename <- "LMRARW-ICPMM-AR-Demo.xlsm"
-(carp_dat <- spmm.readxl("", filename))
+(carp_dat <- metapopbio::spmm.readxl("", filename))
 
-# Assign objects from list
-c(n_stages, n_patches, grouping, lh_order, n_timesteps,
+## Assign objects from list
+c(n_stages, n_patches, group_by, lh_order, n_timesteps,
   stage_names, patch_names, n, matrices, MM, BB) %<-% carp_dat
-
 
 #-----------------------------------------------#
 
 spmm.plot2 <- function(projections, ylabs = NA, xlabs = NA, 
-                       stage_names = NA, patch_names = NA) {
+                      stage_names = NA, patch_names = NA) {
   comments <- comment(projections)
   group_by <- strsplit(comments, " +")[[1]][1]
   if (group_by == "patches") {
@@ -96,6 +91,56 @@ spmm.plot2 <- function(projections, ylabs = NA, xlabs = NA,
   }
 }
 
+vec.perm <-
+  function(n_stages,
+           n_patches,
+           group_by = c("patches", "stages")) {
+    if (group_by == "patches") {
+      m <- n_patches
+      n <- n_stages
+      P <- matrix(0, nrow = m * n, ncol = m * n)
+      for (i in 1:m) {
+        for (j in 1:n) {
+          row_idx <- (i - 1) * n + j
+          col_idx <- (j - 1) * m + i
+          P[row_idx, col_idx] <- 1
+        }
+      }
+    } else if (group_by == "stages") {
+      m <- n_stages
+      n <- n_patches
+      P <- matrix(0, nrow = m * n, ncol = m * n)
+      for (i in 1:m) {
+        for (j in 1:n) {
+          row_idx <- (i - 1) * n + j
+          col_idx <- (j - 1) * m + i
+          P[row_idx, col_idx] <- 1
+        }
+      }
+    }
+    comment(P) <- group_by
+    return(P)
+  }
+
+spmm.project.matrix <- function(P, BB, MM, group_by = c("patches", "stages"), 
+                                lh_order = c("demo", "move")) {
+  A <- NULL  # Initialize A to NULL
+  if (group_by == "patches" && lh_order == "demo") {
+    A <- t(P) %*% MM %*% P %*% BB 
+  } else if (group_by == "patches" && lh_order == "move") {
+    A <- BB %*% t(P) %*% MM %*% P
+  } else if (group_by == "stages" && lh_order == "demo") {
+    A <- MM %*% P %*% BB %*% t(P)
+  } else if (group_by == "stages" && lh_order == "move") {
+    A <- P %*% BB %*% t(P) %*% MM
+  } else {
+    stop("Invalid combination of group_by and lh_order.")  # Default case
+  }
+  comment(A) <- paste(group_by, lh_order)
+  return(A)
+}
+
+
 #### UI ####
 ui <- page_sidebar(
   title = "Relative Abundance Plots",
@@ -153,33 +198,28 @@ ui <- page_sidebar(
 
 # Define server logic required to draw a histogram
 server <- function(input, output) {
-  
-  # Load data ---------------------------------------------------------------
-  # setwd(here::here("App"))
-  # filename <- "LMRARW-ICPMM-AR-Demo.xlsm"
-  # (carp_dat <- spmm.readxl("", filename))
-  # ## Assign objects from list
-  # c(n_stages, n_patches, group_by, lh_order, n_timesteps, 
-  #   stage_names, patch_names, n, matrices, MM, BB) %<-% carp_dat
-  # 
-  
-  ## "Manual" projection and plotting
-  #1. creating the vec-permutation matrix (dimension = stages*patches x stages*patches)
-  P <- metapopbio::vec.perm(n_stages = n_stages,
-                            n_patches = n_patches,
-                            group_by = grouping)
-  
-  #2. Create projection matrix
-  A <- spmm.project.matrix(P, #vec-permutation matrix,
-                           BB, #block diagonal matrix for demographic paramters 
-                           MM, #block diagonal for movement paramters
-                           group_by = grouping, #grouping projections (by patches here)
-                           lh_order = lh_order) #order of events (demographic before movement here)
-  
-  
-  #3. Make projections and plots
-  
   output$FinalPopAll <- renderUI({
+    
+    filename <- "LMRARW-ICPMM-AR-Demo.xlsm"
+    (carp_dat <- metapopbio::spmm.readxl("", filename))
+    c(n_stages, n_patches, group_by, lh_order, n_timesteps,
+      stage_names, patch_names, n, matrices, MM, BB) %<-% carp_dat
+    
+    #1. creating the vec-permutation matrix (dimension = stages*patches x stages*patches)
+    P <- vec.perm(n_stages = n_stages,
+                  n_patches = n_patches,
+                  group_by = group_by)
+    
+    #2. Create projection matrix
+    A <- spmm.project.matrix(P, #vec-permutation matrix,
+                             BB, #block diagonal matrix for demographic paramters 
+                             MM, #block diagonal for movement paramters
+                             group_by = group_by, #grouping projections (by patches here)
+                             lh_order = lh_order) #order of events (demographic before movement here)
+    
+    
+    
+  #3. Make projections and plots
     projs <- spmm.project(
       n = n,  # number of stage/age animals in patch i
       A = A,
@@ -224,11 +264,11 @@ server <- function(input, output) {
     comment(subset) <- comment(projs)
     
     spmm.plot2(subset, 
-               ylabs = "Rel. Abund.",
-               xlabs = "Years", 
-               stage_names = stage_names,
-               patch_names = ex_patch)
-    
+              ylabs = "Rel. Abund.",
+              xlabs = "Years", 
+              stage_names = stage_names,
+              patch_names = ex_patch)
+
   })
   
   #add final population
@@ -245,10 +285,10 @@ server <- function(input, output) {
       n_patches = n_patches,
       harv = input$bins
     )
-    
+
     patch_match <- rep(patch_names, each = n_stages)
     ex_patch <- input$var
-    
+
     subset <- projs[which(patch_match == ex_patch),]
     comment(subset) <- comment(projs)
     
