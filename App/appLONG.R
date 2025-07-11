@@ -245,6 +245,24 @@ server <- function(input, output) {
   
   output$Plot <- renderPlot({
     
+    filename <- "LMRARW-ICPMM-AR-Demo.xlsm"
+    (carp_dat <- metapopbio::spmm.readxl("", filename))
+    c(n_stages, n_patches, group_by, lh_order, n_timesteps,
+      stage_names, patch_names, n, matrices, MM, BB) %<-% carp_dat
+    
+    #1. creating the vec-permutation matrix (dimension = stages*patches x stages*patches)
+    P <- vec.perm(n_stages = n_stages,
+                  n_patches = n_patches,
+                  group_by = group_by)
+    
+    #2. Create projection matrix
+    A <- spmm.project.matrix(P, #vec-permutation matrix,
+                             BB, #block diagonal matrix for demographic paramters 
+                             MM, #block diagonal for movement paramters
+                             group_by = group_by, #grouping projections (by patches here)
+                             lh_order = lh_order) #order of events (demographic before movement here)
+    
+    
     projs <- spmm.project(
       n = n,  # number of stage/age animals in patch i
       A = A,
@@ -273,6 +291,23 @@ server <- function(input, output) {
   
   #add final population
   output$FinalPop <- renderUI({
+    filename <- "LMRARW-ICPMM-AR-Demo.xlsm"
+    (carp_dat <- metapopbio::spmm.readxl("", filename))
+    c(n_stages, n_patches, group_by, lh_order, n_timesteps,
+      stage_names, patch_names, n, matrices, MM, BB) %<-% carp_dat
+    
+    #1. creating the vec-permutation matrix (dimension = stages*patches x stages*patches)
+    P <- vec.perm(n_stages = n_stages,
+                  n_patches = n_patches,
+                  group_by = group_by)
+    
+    #2. Create projection matrix
+    A <- spmm.project.matrix(P, #vec-permutation matrix,
+                             BB, #block diagonal matrix for demographic paramters 
+                             MM, #block diagonal for movement paramters
+                             group_by = group_by, #grouping projections (by patches here)
+                             lh_order = lh_order) #order of events (demographic before movement here)
+    
     
     projs <- spmm.project(
       n = n,  # number of stage/age animals in patch i
