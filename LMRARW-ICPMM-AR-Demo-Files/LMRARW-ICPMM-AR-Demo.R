@@ -1,6 +1,5 @@
 # Set working directory ---------------------------------------------------
-setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
-
+library(metapopbio)
 
 # Load packages -----------------------------------------------------------
 if (!require("pacman")) {
@@ -11,8 +10,8 @@ p_load(metapopbio)
 
 
 # Load data ---------------------------------------------------------------
-path <- getwd()
-filename <- "/LMRARW-ICPMM-(SPMM).xlsm"
+path <- here::here()
+filename <- "/LMRARW-ICPMM-AR-Demo.xlsm"
 (carp_dat <- spmm.readxl(path, filename))
 ## Assign objects from list
 c(n_stages, n_patches, group_by, lh_order, n_timesteps, 
