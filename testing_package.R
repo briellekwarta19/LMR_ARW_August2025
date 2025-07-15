@@ -95,6 +95,7 @@ projs_harvest <- spmm.project(
   n_stages = n_stages,
   n_patches = n_patches, 
   harv = 0.2
+  #harv = rep(0.2, n_patches)
   #harv = rep(0.2, nrow(BB))
   #harv = rep(0.2, nrow(BB)* ncol(BB))
   #harv = matrix(0.2, nrow = nrow(BB), ncol =  ncol(BB))
@@ -133,7 +134,7 @@ library(tidyverse)
 library(scales)
 library(rPref)
 
-harvs <- seq(0,1,0.1)
+harvs <- seq(0,1,0.05)
 dets <- c(0)
 strategies_outcomes <- expand.grid(harvs,dets)
 colnames(strategies_outcomes) <- c('H', 'D')
@@ -161,8 +162,6 @@ for(i in 1:length(strategies_outcomes$H)){
 
 test <- psel(strategies_outcomes, low(Cost) * low(TotalN))
 test
-
-
 
 find_knee_point <- function(x, y) {
   # Normalize the data
@@ -199,14 +198,13 @@ KP <- find_knee_point(strategies_outcomes$Cost, strategies_outcomes$TotalN)
 paste0('Optimal point: Harvest level = ', strategies_outcomes$H[KP],
               ', Total population = ', strategies_outcomes$TotalN[KP], 
               ', Total cost = ', strategies_outcomes$Cost[KP])
-select <- KP-1
 
+#these will vary:
+select <- KP-1
 maxpop <- 20000
 maxcost <- 500000000
 
 strategies_outcomes$Strategy <- NA
-
-
 
 
 strategies_outcomes$Strategy[KP] <- 'Optimal Strategy'

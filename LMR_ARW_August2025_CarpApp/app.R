@@ -8,7 +8,6 @@ library(scales)
 #### to do: 
 #add deterrents? 
 #add way to add in file into the shinyapp
-#multiple pages (1st page = data entry, second page = active environment)
 
 #-----------------------------------------------#
 #### Functions ####
@@ -770,7 +769,7 @@ ui <- navbarPage(
                  width = 3,  # Narrower sidebar
                  wellPanel(
                    helpText("Compare chosen management strategy against other potential actions"),
-                  
+                   
                    sliderInput(
                      "harvs",
                      label = "Selected harvest level:",
@@ -806,10 +805,10 @@ ui <- navbarPage(
                    )
                  )
                )
+             )
            )
   )
-)
-
+  
 )
 
 
@@ -997,14 +996,14 @@ server <- function(input, output) {
     
     for(i in 1:length(strategies_outcomes$H)){
       temp <- spmm.project2(n = n,  # number of stage/age animals in patch i
-                           A = A,
-                           BB = BB,
-                           MM = MM,
-                           P = P,
-                           n_timesteps = n_timesteps,
-                           n_stages = n_stages,
-                           n_patches = n_patches, 
-                           harv = strategies_outcomes$H[i]
+                            A = A,
+                            BB = BB,
+                            MM = MM,
+                            P = P,
+                            n_timesteps = n_timesteps,
+                            n_stages = n_stages,
+                            n_patches = n_patches, 
+                            harv = strategies_outcomes$H[i]
       ) 
       
       strategies_outcomes$TotalN[i] <- sum(temp[,n_timesteps])
@@ -1013,7 +1012,7 @@ server <- function(input, output) {
     }
     
     KP <- find_knee_point(strategies_outcomes$Cost, strategies_outcomes$TotalN)
-
+    
     select <- which(strategies_outcomes$H == input$harvs)
     maxpop <- input$maxpop
     maxcost <- input$maxcost
