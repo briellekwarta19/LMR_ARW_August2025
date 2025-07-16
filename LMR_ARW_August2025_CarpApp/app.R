@@ -4,6 +4,7 @@ library(metapopbio)
 library(dplyr)
 library(tidyverse)
 library(scales)
+library(plyr)
 
 #### to do: 
 #add deterrents? 
@@ -698,12 +699,20 @@ ui <- navbarPage(
   title = "LMR-ARW-iCARP",
   
   # Introduction Tab
+  
   tabPanel("Introduction",
            fluidPage(
              h2("Invasive Carp Management App"),
-             p("This app allows you to explore how different harvest and deterrent levels affect carp relative abundance across 'patches' in the Lower Missisippi River/Arkansas Red-White Rivers"),
+             p("This app allows you to explore how different harvest and deterrent levels affect carp relative abundance across 'patches' in the Lower Mississippi River/Arkansas Red-White Rivers"),
              p("Navigate to the 'Explore Strategies' tab to explore harvest and deterrent strategies"),
              p("Navigate to the 'Navigate Tradeoffs' tab to identify tradeoffs between management outcomes and cost"),
+             tags$hr(),
+             tags$div(
+               tags$h4("Map of a subset of 'patches' in the Arkansas River", style = "text-align: center;"),
+               
+                # Add image here
+                tags$img(src = "StudyArea.png", height = "500px", style = "display: block; margin-left: auto; margin-right: auto; margin-top: 20px; margin-bottom: 20px;"),
+             ), 
              tags$hr(),
              p("Developed by Brielle Thompson & Caleb Aldridge")
            )
@@ -740,6 +749,10 @@ ui <- navbarPage(
                  )
                )
              ),
+        
+
+             
+             
              column(
                width = 9,
                fluidRow(
@@ -750,15 +763,32 @@ ui <- navbarPage(
                    uiOutput("Patch", style = "padding-top: 10px; font-weight: bold;font-size: 22px;")
                  ),
                  column(
-                   width = 8,
-                   plotOutput("Plot", height = "400px", width = "100%")
-                 ),
-                 column(
-                   width = 4,
-                   uiOutput("FinalPop", style = "padding-top: 20px;")
+                   width = 12,
+                   tabsetPanel(
+                     tabPanel("Single Patch",
+                              fluidRow(
+                                column(
+                                  width = 8,
+                                  plotOutput("Plot", height = "400px", width = "100%")
+                                ),
+                                column(
+                                  width = 4,
+                                  uiOutput("FinalPop", style = "padding-top: 20px;")
+                                )
+                              )
+                     ),
+                     tabPanel("All Patches",
+                              tags$img(src = "VectorStudyArea.png", height = "500px", width = "100%"),
+                              br(), 
+                              plotOutput("AllPlot", height = "400px", width = "100%")
+                     )
+                   )
                  )
                )
              )
+             
+             
+             
            )
   ), 
   # Tradeoffs Tab
@@ -966,6 +996,81 @@ server <- function(input, output) {
     
   })
   
+  
+  ###### All patches plot ######
+  output$AllPlot <- renderPlot({
+    
+    filename <- "LMRARW-ICPMM-AR-Demo.xlsm"
+    (carp_dat <- metapopbio::spmm.readxl("", filename))
+    c(n_stages, n_patches, grouping, lh_order, n_timesteps,
+      stage_names, patch_names, n, matrices, MM, BB) %<-% carp_dat
+    
+    #1. creating the vec-permutation matrix (dimension = stages*patches x stages*patches)
+    P <- vec.perm(n_stages = n_stages,
+                  n_patches = n_patches,
+                  grouping = grouping)
+    
+    #2. Create projection matrix
+    A <- spmm.project.matrix(P, #vec-permutation matrix,
+                             BB, #block diagonal matrix for demographic paramters 
+                             MM, #block diagonal for movement paramters
+                             grouping = grouping, #grouping projections (by patches here)
+                             lh_order = lh_order) #order of events (demographic before movement here)
+    
+    
+    projs <- spmm.project2(
+      n = n,  # number of stage/age animals in patch i
+      A = A,
+      BB = BB,
+      MM = MM,
+      P = P,
+      n_timesteps = n_timesteps,
+      n_stages = n_stages,
+      n_patches = n_patches, 
+      harv = input$bins
+    )
+    
+    projs_mat <- projs
+    
+    projs_juvenile <- projs_mat[seq(1, nrow(projs_mat), by = 2), ]
+    projs_adult <- projs_mat[seq(2, nrow(projs_mat), by = 2), ]
+    
+    patch_df_j <- adply(projs_juvenile, c(1,2))
+    colnames(patch_df_j) <- c('Patch', 'Year', 'Rel.abund')
+    patch_df_j$class <- 'Juvenile'
+    
+    patch_df_a <- adply(projs_adult, c(1,2))
+    colnames(patch_df_a) <- c('Patch', 'Year', 'Rel.abund')
+    patch_df_a$class <- 'Adult'
+    
+    patch_df <- rbind(patch_df_j, patch_df_a)
+    
+    ggplot(patch_df)+
+      geom_point(aes(x = Year, y = Rel.abund, group = interaction(Patch, class), color = class))+
+      geom_line(aes(x = Year, y = Rel.abund, group = interaction(Patch, class), color = class, linetype = class))+
+      scale_color_manual(
+        values = c("Juvenile" = "black", "Adult" = "salmon"),
+        breaks = c("Juvenile", "Adult"),
+        name = NULL)+
+      scale_linetype_manual(
+        values = c("Juvenile" = "solid", "Adult" = "dashed"),
+        breaks = c("Juvenile", "Adult"),
+        name = NULL
+      ) +
+      theme_bw() +   
+      ylab("Relative Abundance") +
+      xlab("Years")+
+      theme(strip.background=element_rect(colour="white",
+                                          fill="white"),
+            strip.text.x = element_text(hjust = 0, margin=margin(l=0)),
+            panel.border = element_rect(colour = "gray", size = 1), 
+            axis.ticks = element_blank(),
+            text = element_text(size = 15)
+      )+
+      facet_wrap(~Patch, scales = 'free', labeller = "label_both")
+    
+  })
+  
   ###### Pareto Plot #####
   output$ParetoPlot <- renderPlot({
     
@@ -1013,7 +1118,7 @@ server <- function(input, output) {
     
     KP <- find_knee_point(strategies_outcomes$Cost, strategies_outcomes$TotalN)
     
-    select <- which(strategies_outcomes$H == input$harvs)
+    select <- which(as.factor(strategies_outcomes$H) == input$harvs)
     maxpop <- input$maxpop
     maxcost <- input$maxcost
     

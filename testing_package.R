@@ -200,8 +200,8 @@ paste0('Optimal point: Harvest level = ', strategies_outcomes$H[KP],
               ', Total cost = ', strategies_outcomes$Cost[KP])
 
 #these will vary:
-select <- KP-1
-maxpop <- 20000
+select <- which(as.factor(strategies_outcomes$H) == 0.7)
+maxpop <- 25000
 maxcost <- 500000000
 
 strategies_outcomes$Strategy <- NA
@@ -230,3 +230,48 @@ ggplot(strategies_outcomes)+
         axis.ticks = element_blank(),
         text = element_text(size = 15)
   )
+
+
+#### testing all plots ####
+projs_mat <- projs
+
+projs_juvenile <- projs_mat[seq(1, nrow(projs_mat), by = 2), ]
+projs_adult <- projs_mat[seq(2, nrow(projs_mat), by = 2), ]
+
+patch_df_j <- adply(projs_juvenile, c(1,2))
+colnames(patch_df_j) <- c('Patch', 'Year', 'Rel.abund')
+patch_df_j$class <- 'Juvenile'
+
+patch_df_a <- adply(projs_adult, c(1,2))
+colnames(patch_df_a) <- c('Patch', 'Year', 'Rel.abund')
+patch_df_a$class <- 'Adult'
+
+patch_df <- rbind(patch_df_j, patch_df_a)
+
+ggplot(patch_df)+
+  geom_point(aes(x = Year, y = Rel.abund, group = interaction(Patch, class), color = class))+
+  geom_line(aes(x = Year, y = Rel.abund, group = interaction(Patch, class), color = class, linetype = class))+
+  scale_color_manual(
+    values = c("Juvenile" = "black", "Adult" = "salmon"),
+    breaks = c("Juvenile", "Adult"),
+    name = NULL)+
+  scale_linetype_manual(
+    values = c("Juvenile" = "solid", "Adult" = "dashed"),
+    breaks = c("Juvenile", "Adult"),
+    name = NULL
+  ) +
+  theme_bw() +   
+  ylab("Relative Abundance") +
+  xlab("Years")+
+  theme(strip.background=element_rect(colour="white",
+                                      fill="white"),
+        strip.text.x = element_text(hjust = 0, margin=margin(l=0)),
+        panel.border = element_rect(colour = "gray", size = 1), 
+        axis.ticks = element_blank(),
+        text = element_text(size = 15)
+  )+
+  facet_wrap(~Patch, scales = 'free', labeller = "label_both")
+
+
+
+
