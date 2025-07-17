@@ -1,6 +1,8 @@
 # Set working directory ---------------------------------------------------
 #setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
-
+#devtools::install_github("AldridgeCaleb/meta-pop-bio")
+library("metapopbio")
+library(plyr)
 
 # Load packages -----------------------------------------------------------
 if (!require("pacman")) {
@@ -94,13 +96,7 @@ projs_harvest <- spmm.project(
   n_timesteps = n_timesteps,
   n_stages = n_stages,
   n_patches = n_patches, 
-  harv = 0.2
-  #harv = rep(0.2, n_patches)
-  #harv = rep(0.2, nrow(BB))
-  #harv = rep(0.2, nrow(BB)* ncol(BB))
-  #harv = matrix(0.2, nrow = nrow(BB), ncol =  ncol(BB))
-  #harv = rep(0.2, ((nrow(BB)* ncol(BB)) -ncol(BB)) / 2)
-  #harv = rep(0.2, (nrow(BB)* ncol(BB)) -ncol(BB))
+  mod_mort = 0.2
 )
 
 ex_patch <- 'MS River & Lower L&Ds'
@@ -150,7 +146,7 @@ for(i in 1:length(strategies_outcomes$H)){
                                 n_timesteps = n_timesteps,
                                 n_stages = n_stages,
                                 n_patches = n_patches, 
-                                harv = strategies_outcomes$H[i]
+                                mod_mort = strategies_outcomes$H[i]
                         ) 
 
   strategies_outcomes$TotalN[i] <- sum(temp[,n_timesteps])
