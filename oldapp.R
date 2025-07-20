@@ -813,7 +813,8 @@ c(n_stages, n_patches, grouping, lh_order, n_timesteps,
 ui <- navbarPage(
   title = "LMR-ARW-iCARP",
   
-  ##### Introduction #####
+  # Introduction Tab
+  
   tabPanel("Introduction",
            fluidPage(
              h2("Invasive Carp Management App"),
@@ -824,22 +825,27 @@ ui <- navbarPage(
              tags$div(
                tags$h4("Map of a subset of 'patches' in the Arkansas River", style = "text-align: center;"),
                
-                # Add image here
-                tags$img(src = "StudyArea.png", height = "500px", style = "display: block; margin-left: auto; margin-right: auto; margin-top: 20px; margin-bottom: 20px;"),
+               # Add image here
+               tags$img(src = "StudyArea.png", height = "500px", style = "display: block; margin-left: auto; margin-right: auto; margin-top: 20px; margin-bottom: 20px;"),
              ), 
              tags$hr(),
              p("Developed by Brielle Thompson & Caleb Aldridge")
            )
   ),
   
-  ##### Collective strategies #####
-  tabPanel("Collective Strategies",
+  # Explore Tab
+  tabPanel("Explore Strategies",
            fluidRow(
-             # Sidebar (left)
              column(
-               width = 3,
+               width = 3,  # Narrower sidebar
                wellPanel(
                  helpText("Explore outcomes of harvest and deterrent strategies"),
+                 selectInput(
+                   "var",
+                   label = "Choose a patch to display",
+                   choices = patch_names,
+                   selected = patch_names[1]
+                 ),
                  sliderInput(
                    "bins",
                    label = "Harvest level:",
@@ -848,34 +854,33 @@ ui <- navbarPage(
                    value = 0,
                    step = 0.05
                  ),
-                  sliderInput(
-                    "deter",
-                    label = "Deterrent level:",
-                    min = 0, 
-                    max = 1, 
-                    value = 0, 
-                    step = 0.05
-                  )
+                 sliderInput(
+                   "deter",
+                   label = "Deterrant level:",
+                   min = 0, 
+                   max = 1, 
+                   value = 0, 
+                   step = 0.05
+                 )
                )
              ),
              
-             # Main content (right)
+             
+             
+             
              column(
                width = 9,
-               fluidPage(
-                 uiOutput("FinalPopAll", style = "padding-top: 20px; font-weight: bold;font-size: 23px;"),
-                 tags$hr(style = "border-top: 2px solid #bbb; margin-top: 10px; margin-bottom: 20px;"),
-                 uiOutput("Patch", style = "padding-top: 10px; font-weight: bold;font-size: 22px;"),
-                 
-                 tabsetPanel(
-                   tabPanel("Single Patch",
-                            fluidPage(
-                              selectInput(
-                                "var",
-                                label = "Choose a patch to display",
-                                choices = patch_names,
-                                selected = patch_names[1]
-                              ),
+               fluidRow(
+                 column(
+                   width = 12,
+                   uiOutput("FinalPopAll", style = "padding-top: 20px; font-weight: bold;font-size: 23px;"),
+                   tags$hr(style = "border-top: 2px solid #bbb; margin-top: 10px; margin-bottom: 20px;"),
+                   uiOutput("Patch", style = "padding-top: 10px; font-weight: bold;font-size: 22px;")
+                 ),
+                 column(
+                   width = 12,
+                   tabsetPanel(
+                     tabPanel("Single Patch",
                               fluidRow(
                                 column(
                                   width = 8,
@@ -886,88 +891,71 @@ ui <- navbarPage(
                                   uiOutput("FinalPop", style = "padding-top: 20px;")
                                 )
                               )
-                            )
-                   ),
-                   tabPanel("All Patches",
-                            fluidPage(
+                     ),
+                     tabPanel("All Patches",
                               tags$img(src = "VectorStudyArea.png", height = "500px", width = "100%"),
                               br(), 
                               plotOutput("AllPlot", height = "400px", width = "100%")
-                            )
+                     )
                    )
+                 )
+               )
+             )
+             
+             
+             
+           )
+  ), 
+  # Tradeoffs Tab
+  tabPanel("Navigate Tradeoffs",
+           fluidPage(
+             fluidRow(
+               column(
+                 width = 3,  # Narrower sidebar
+                 wellPanel(
+                   helpText("Compare chosen management strategy against other potential actions"),
+                   
+                   sliderInput(
+                     "harvs",
+                     label = "Selected harvest level:",
+                     min = 0, 
+                     max = 1, 
+                     value = 0,
+                     step = 0.05
+                   ),
+                   sliderInput(
+                     "maxpop",
+                     label = "Population constraint (maximum population):",
+                     min = 0, 
+                     max = 50000, 
+                     value = 25000,
+                     step = 1000
+                   ),
+                   sliderInput(
+                     "maxcost",
+                     label = "Cost constraint (maximum cost):",
+                     min = 0, 
+                     max = 1000000000, 
+                     value = 500000000,
+                     step = 500000
+                   )
+                 )
+               ),
+               column(
+                 width = 9,
+                 fluidRow(
+                   column(
+                     width = 8,
+                     plotOutput("ParetoPlot", height = "400px", width = "100%")
+                   )
+                 )
                )
              )
            )
-          )
-  ),
-  
-
-  ##### Location strategies #####
-  # Location specific strategies
-  tabPanel("Location specific strategies",
-           fluidPage(
-             
-           )
-  ),
-  
-  #### Tradeoffs #####
-  #Navigate Tradeoffs
-  tabPanel("Navigate Tradeoffs",
-           fluidPage(
-             tabsetPanel(
-               tabPanel("Collective Strategies",
-                fluidRow(
-                  column(
-                    width = 3,  # Narrower sidebar
-                    wellPanel(
-                      helpText("Compare chosen management strategy against other potential actions"),
-                      
-                      sliderInput(
-                        "harvs",
-                        label = "Selected harvest level:",
-                        min = 0, 
-                        max = 1, 
-                        value = 0,
-                        step = 0.05
-                      ),
-                      sliderInput(
-                        "maxpop",
-                        label = "Population constraint:",
-                        min = 0, 
-                        max = 50000, 
-                        value = 25000,
-                        step = 1000
-                      ),
-                      sliderInput(
-                        "maxcost",
-                        label = "Cost constraint (in millions):",
-                        min = 0, 
-                        max = 1000,  # Represent millions
-                        value = 500,
-                        step = 5
-                      )
-                    )
-                  ),
-                  column(
-                    width = 9,
-                    fluidRow(
-                      column(
-                        width = 9,
-                        plotOutput("ParetoPlot", height = "400px", width = "100%")
-                      )
-                    )
-                  )
-             )
-           ),
-            tabPanel("Location specific strategies",
-                    fluidRow()
-           
-        )
-      )
-    )
-  
   )
+  
 )
+
 
 #### Server ####
 
@@ -1251,7 +1239,7 @@ server <- function(input, output) {
     
     select <- which(as.factor(strategies_outcomes$H) == input$harvs)
     maxpop <- input$maxpop
-    maxcost <- input$maxcost* 1e6
+    maxcost <- input$maxcost
     
     strategies_outcomes$Strategy <- NA
     

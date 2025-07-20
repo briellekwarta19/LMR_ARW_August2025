@@ -848,14 +848,14 @@ ui <- navbarPage(
                    value = 0,
                    step = 0.05
                  ),
-                  sliderInput(
-                    "deter",
-                    label = "Deterrent level:",
-                    min = 0, 
-                    max = 1, 
-                    value = 0, 
-                    step = 0.05
-                  )
+                 sliderInput(
+                   "deter",
+                   label = "Deterrent level:",
+                   min = 0, 
+                   max = 1, 
+                   value = 0, 
+                   step = 0.05
+                 )
                )
              ),
              
@@ -910,64 +910,105 @@ ui <- navbarPage(
            )
   ),
   
-  #### Tradeoffs #####
-  #Navigate Tradeoffs
+  ##### Tradeoffs #####
+  # Navigate Tradeoffs
   tabPanel("Navigate Tradeoffs",
            fluidPage(
              tabsetPanel(
                tabPanel("Collective Strategies",
                 fluidRow(
                   column(
-                    width = 3,  # Narrower sidebar
-                    wellPanel(
-                      helpText("Compare chosen management strategy against other potential actions"),
-                      
-                      sliderInput(
-                        "harvs",
-                        label = "Selected harvest level:",
-                        min = 0, 
-                        max = 1, 
-                        value = 0,
-                        step = 0.05
-                      ),
-                      sliderInput(
-                        "maxpop",
-                        label = "Population constraint:",
-                        min = 0, 
-                        max = 50000, 
-                        value = 25000,
-                        step = 1000
-                      ),
-                      sliderInput(
-                        "maxcost",
-                        label = "Cost constraint (in millions):",
-                        min = 0, 
-                        max = 1000,  # Represent millions
-                        value = 500,
-                        step = 5
-                      )
-                    )
-                  ),
-                  column(
-                    width = 9,
-                    fluidRow(
-                      column(
-                        width = 9,
-                        plotOutput("ParetoPlot", height = "400px", width = "100%")
-                      )
-                    )
-                  )
+                  width = 4,  # Narrower sidebar
+                  wellPanel(
+                   helpText("Compare chosen management strategy against other potential actions"),
+                   
+                   sliderInput(
+                     "harvs",
+                     label = "Selected harvest level:",
+                     min = 0, 
+                     max = 1, 
+                     value = 0,
+                     step = 0.05
+                   ),
+                   sliderInput(
+                     "maxpop",
+                     label = "Population constraint (maximum population):",
+                     min = 0, 
+                     max = 50000, 
+                     value = 25000,
+                     step = 1000
+                   ),
+                   sliderInput(
+                     "maxcost",
+                     label = "Cost constraint (maximum cost):",
+                     min = 0, 
+                     max = 1000000000, 
+                     value = 500000000,
+                     step = 1000000
+                   )
+                 )
+               ),
+               column(
+                 width = 9,
+                 fluidRow(
+                   column(
+                     width = 8,
+                     plotOutput("ParetoPlot", height = "400px", width = "100%")
+                   )
+                 )
+               )
              )
            ),
-            tabPanel("Location specific strategies",
-                    fluidRow()
-           
+           tabPanel("Location specific strategies",
+                    fluidRow(
+                      column(
+                        width = 4,  # Narrower sidebar
+                        wellPanel(
+                          helpText("Compare chosen management strategy against other potential actions"),
+                          
+                          sliderInput(
+                            "harvs",
+                            label = "Selected harvest level:",
+                            min = 0, 
+                            max = 1, 
+                            value = 0,
+                            step = 0.05
+                          ),
+                          sliderInput(
+                            "maxpop",
+                            label = "Population constraint (maximum population):",
+                            min = 0, 
+                            max = 50000, 
+                            value = 25000,
+                            step = 1000
+                          ),
+                          sliderInput(
+                            "maxcost",
+                            label = "Cost constraint (maximum cost):",
+                            min = 0, 
+                            max = 1000000000, 
+                            value = 500000000,
+                            step = 1000000
+                          )
+                        )
+                      ),
+                      column(
+                        width = 9,
+                        fluidRow(
+                          column(
+                            width = 8,
+                            plotOutput("ParetoPlot", height = "400px", width = "100%")
+                          )
+                        )
+                      )
+                    )
+           )
         )
       )
-    )
-  
   )
+  
 )
+
 
 #### Server ####
 
@@ -1251,7 +1292,7 @@ server <- function(input, output) {
     
     select <- which(as.factor(strategies_outcomes$H) == input$harvs)
     maxpop <- input$maxpop
-    maxcost <- input$maxcost* 1e6
+    maxcost <- input$maxcost
     
     strategies_outcomes$Strategy <- NA
     
