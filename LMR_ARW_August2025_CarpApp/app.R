@@ -5,6 +5,7 @@ library(dplyr)
 library(tidyverse)
 library(scales)
 library(plyr)
+library(ggrepel)
 
 #### to do: 
 #add deterrents? 
@@ -818,8 +819,9 @@ ui <- navbarPage(
            fluidPage(
              h2("Invasive Carp Management App"),
              p("This app allows you to explore how different harvest and deterrent levels affect carp relative abundance across 'patches' in the Lower Mississippi River/Arkansas Red-White Rivers"),
-             p("Navigate to the 'Explore Strategies' tab to explore harvest and deterrent strategies"),
-             p("Navigate to the 'Navigate Tradeoffs' tab to identify tradeoffs between management outcomes and cost"),
+             p("Navigate to the 'Collective Strategies' tab to explore harvest and deterrent strategies that are enacted across all patches equally"),
+             p("Navigate to the 'Location Bound Strategies' tab to explore a subset of harvest and deterrent strategies that are performed on specific patches"),
+             p("Navigate to the 'Navigate Tradeoffs' tab to examine tradeoffs between final population abudnance and cost across different management strategies"),
              tags$hr(),
              tags$div(
                tags$h4("Map of a subset of 'patches' in the Arkansas River", style = "text-align: center;"),
@@ -839,7 +841,7 @@ ui <- navbarPage(
              column(
                width = 3,
                wellPanel(
-                 helpText("Explore outcomes of harvest and deterrent strategies"),
+                 helpText("Select different harvest and deterrent levels below and the 'Single Patch' panel to see outcomes for a specific patch and navigate to the 'All Patches' panel to see results across all locations"),
                  sliderInput(
                    "bins",
                    label = "Harvest level:",
@@ -902,11 +904,11 @@ ui <- navbarPage(
   ),
   
 
-  ##### Location strategies #####
+  ##### Location bound #####
   # Location specific strategies
-  tabPanel("Location specific strategies",
+  tabPanel("Location Bound Strategies",
            fluidPage(
-             
+             h2("To do! Add these strategies")
            )
   ),
   
@@ -914,13 +916,23 @@ ui <- navbarPage(
   #Navigate Tradeoffs
   tabPanel("Navigate Tradeoffs",
            fluidPage(
+             p("Here we are identifying tradeoffs between management outcomes and management costs."),
+             p("To analyze this tradeoff, first select your desired harvest level which will appear as the purple point in the plot.
+             Then, you can identify your population constraint - referring to your maximum desirable population size, and also select 
+               your cost constraint - referring to your maximum budget."),
+             p("The resulting plot shows all management strategies with discarded strategies shown in gray (i.e., it has greater population and/or cost than your constraints), 
+             your selected strategy in purple, and the optimal strategy that does best in having both low population and management cost (i.e., the knee point). 
+               The specific outcomes for the optimal and selected strategies are shown in text on the top right portion of the plot."),
+            
+             tags$hr(),
+             
              tabsetPanel(
                tabPanel("Collective Strategies",
                 fluidRow(
                   column(
                     width = 3,  # Narrower sidebar
                     wellPanel(
-                      helpText("Compare chosen management strategy against other potential actions"),
+                      helpText("Select desired harvest level and popualtion and cost constraints"),
                       
                       sliderInput(
                         "harvs",
@@ -959,7 +971,7 @@ ui <- navbarPage(
                   )
              )
            ),
-            tabPanel("Location specific strategies",
+            tabPanel("Location Bound Strategies",
                     fluidRow()
            
         )
@@ -1262,6 +1274,28 @@ server <- function(input, output) {
     strategies_outcomes$Strategy[c(-KP, -(select), -subop)] <- 'Potential Strategy'
     strategies_outcomes$Strategy[select] <- 'Selected Strategy'
     
+    
+    optimal_text <- strategies_outcomes %>% 
+      filter(Strategy %in% c('Optimal Strategy'))
+    
+    optimal_text <-  paste0("Abundance: ",
+      format(optimal_text$TotalN, big.mark = ","), 
+      " & Cost: $", format(ceiling(optimal_text$Cost/1e6), big.mark = ",", scientific = FALSE),
+      "M (harvest = ", optimal_text$H, ")"
+    )
+    
+    selected_text <- strategies_outcomes %>% 
+      filter(Strategy %in% c('Selected Strategy'))
+    
+    selected_text <-  paste0("Abundance: ",
+                            format(selected_text$TotalN, big.mark = ","), 
+                            " & Cost: $", format(ceiling(selected_text$Cost/1e6), big.mark = ",", scientific = FALSE),
+                            "M (harvest = ", selected_text$H, ")"
+    )
+    
+    
+    colors <- c('azure4', 'forestgreen', 'lightskyblue1', 'blueviolet')
+    
     ggplot(strategies_outcomes)+
       geom_point(aes(x = Cost, y = TotalN, fill = Strategy), shape = 21, size = 5)+
       theme_bw() +   
@@ -1269,6 +1303,13 @@ server <- function(input, output) {
       xlab("Management cost ($)")+
       geom_hline(yintercept = maxpop, linetype = 'dashed')+
       geom_vline(xintercept = maxcost, linetype = 'dashed')+
+      geom_text(aes(label = optimal_text, 
+                                         x = 1000000000, y = 47500),
+                color = 'forestgreen')+
+      geom_text(aes(label = selected_text,
+                    x = 1000000000, y = 45500),
+                color = 'blueviolet') +
+      scale_fill_manual(values = colors)+
       scale_x_continuous(labels = unit_format(unit = "M", scale = 1e-6))+
       theme(strip.background=element_rect(colour="white",
                                           fill="white"),
