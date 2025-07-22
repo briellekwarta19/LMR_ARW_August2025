@@ -13,7 +13,7 @@ path <- here::here("LMRARW-ICPMM-AR-Demo-Files")
 filename <- "/LMRARW-ICPMM-AR-Demo.xlsm"
 (carp_dat <- spmm.readxl(path, filename))
 ## Assign objects from list
-c(n_stages, n_patches, group_by, lh_order, n_timesteps, 
+c(n_stages, n_patches, group_by, lh_order, n_timesteps,
   stage_names, patch_names, n, matrices, MM, BB) %<-% carp_dat
 
 
@@ -127,10 +127,10 @@ ui <- page_sidebar(
       tags$hr(style = "border-top: 2px solid #bbb; margin-top: 10px; margin-bottom: 20px;"),
       uiOutput("Patch", style = "padding-top: 10px; font-weight: bold;font-size: 22px;")
     ),
-    # column(
-    #   width = 8,
-    #   plotOutput("Plot", height = "400px", width = "100%")
-    # ),
+    column(
+      width = 8,
+      plotOutput("Plot", height = "400px", width = "100%")
+    ),
     column(
       width = 4,
       uiOutput("FinalPop", style = "padding-top: 20px;")

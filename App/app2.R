@@ -1,3 +1,4 @@
+
 library(shiny)
 library(metapopbio)
 library(bslib)
@@ -20,7 +21,7 @@ c(n_stages, n_patches, group_by, lh_order, n_timesteps,
 #-----------------------------------------------#
 
 spmm.plot2 <- function(projections, ylabs = NA, xlabs = NA, 
-                       stage_names = NA, patch_names = NA) {
+                      stage_names = NA, patch_names = NA) {
   comments <- comment(projections)
   group_by <- strsplit(comments, " +")[[1]][1]
   if (group_by == "patches") {
@@ -127,10 +128,10 @@ ui <- page_sidebar(
       tags$hr(style = "border-top: 2px solid #bbb; margin-top: 10px; margin-bottom: 20px;"),
       uiOutput("Patch", style = "padding-top: 10px; font-weight: bold;font-size: 22px;")
     ),
-    # column(
-    #   width = 8,
-    #   plotOutput("Plot", height = "400px", width = "100%")
-    # ),
+    column(
+      width = 8,
+      plotOutput("Plot", height = "400px", width = "100%")
+    ),
     column(
       width = 4,
       uiOutput("FinalPop", style = "padding-top: 20px;")
@@ -147,24 +148,29 @@ ui <- page_sidebar(
 #### Server ####
 
 # Define server logic required to draw a histogram
-server <- function(input, output) {
+server <- function(input, output, session) {
   
-  # Load data ---------------------------------------------------------------
+  #1. Load and prepare data 
+  proj_data <- reactive({
+    
+  
   path <- here::here("LMRARW-ICPMM-AR-Demo-Files")
   filename <- "/LMRARW-ICPMM-AR-Demo.xlsm"
-  (carp_dat <- spmm.readxl(path, filename))
+  carp_dat <- spmm.readxl(path, filename)
+  
   ## Assign objects from list
-  c(n_stages, n_patches, group_by, lh_order, n_timesteps, 
-    stage_names, patch_names, n, matrices, MM, BB) %<-% carp_dat
+  n_stages <- carp_dat$n_stages
+  n_patches <- carp_dat$n_patches
+  group_by <- carp_dat$group_by
+  lh_order <- carp_dat$lh_order
+  n_timesteps <- carp_dat$n_timesteps
+  stage_names <- carp_dat$stage_names
+  patch_names <- carp_dat$patch_names
+  n <- carp_dat$n
+  matrices <- carp_dat$matrices
+  MM <- carp_dat$MM
+  BB <- carp_dat$BB
   
-  
-  # Project and plot --------------------------------------------------------
-  ## Automated function
-  auto.spmm(
-    path = path,
-    filename = filename,
-    plot = TRUE
-  )
   
   ## "Manual" projection and plotting
   #1. creating the vec-permutation matrix (dimension = stages*patches x stages*patches)
@@ -179,24 +185,33 @@ server <- function(input, output) {
                            group_by = group_by, #grouping projections (by patches here)
                            lh_order = lh_order) #order of events (demographic before movement here)
   
+  })
+  
   
   #3. Make projections and plots
-  
+
+  #Reporting total pop
   output$FinalPopAll <- renderUI({
+    
+    data <- proj_data()
+    
     projs <- spmm.project(
-      n = n,  # number of stage/age animals in patch i
-      A = A,
-      BB = BB,
-      MM = MM,
-      P = P,
-      n_timesteps = n_timesteps,
-      n_stages = n_stages,
-      n_patches = n_patches,
+      n = data$n,  # number of stage/age animals in patch i
+      A = data$A,
+      BB = data$BB,
+      MM = data$MM,
+      P = data$P,
+      n_timesteps = data$n_timesteps,
+      n_stages = data$n_stages,
+      n_patches = data$n_patches,
       harv = input$bins
     )
+    
+    
+    #Reporting total pop
     HTML(paste0(
       "<b> Total final relative abundance across all patches: <b>",
-      format(sum(projs[, n_timesteps]), big.mark = ",")
+      format(sum(projs[, data$n_timesteps]), big.mark = ",")
     ))
     
   })
@@ -208,15 +223,17 @@ server <- function(input, output) {
   
   output$Plot <- renderPlot({
     
+    data <- proj_data()
+    
     projs <- spmm.project(
-      n = n,  # number of stage/age animals in patch i
-      A = A,
-      BB = BB,
-      MM = MM,
-      P = P,
-      n_timesteps = n_timesteps,
-      n_stages = n_stages,
-      n_patches = n_patches, 
+      n = data$n,  # number of stage/age animals in patch i
+      A = data$A,
+      BB = data$BB,
+      MM = data$MM,
+      P = data$P,
+      n_timesteps = data$n_timesteps,
+      n_stages = data$n_stages,
+      n_patches = data$n_patches,
       harv = input$bins
     )
     
@@ -227,40 +244,42 @@ server <- function(input, output) {
     comment(subset) <- comment(projs)
     
     spmm.plot2(subset, 
-               ylabs = "Rel. Abund.",
-               xlabs = "Years", 
-               stage_names = stage_names,
-               patch_names = ex_patch)
-    
+              ylabs = "Rel. Abund.",
+              xlabs = "Years", 
+              stage_names = stage_names,
+              patch_names = ex_patch)
+
   })
   
   #add final population
   output$FinalPop <- renderUI({
     
+    data <- proj_data()
+    
     projs <- spmm.project(
-      n = n,  # number of stage/age animals in patch i
-      A = A,
-      BB = BB,
-      MM = MM,
-      P = P,
-      n_timesteps = n_timesteps,
-      n_stages = n_stages,
-      n_patches = n_patches,
+      n = data$n,  # number of stage/age animals in patch i
+      A = data$A,
+      BB = data$BB,
+      MM = data$MM,
+      P = data$P,
+      n_timesteps = data$n_timesteps,
+      n_stages = data$n_stages,
+      n_patches = data$n_patches,
       harv = input$bins
     )
-    
+
     patch_match <- rep(patch_names, each = n_stages)
     ex_patch <- input$var
-    
+
     subset <- projs[which(patch_match == ex_patch),]
     comment(subset) <- comment(projs)
     
     HTML(paste0(
       "<b> Final relative abundance summary</b><br>",
       "Patch selected: ", input$var, "<br>",
-      "Total population: ", format(sum(subset[1:2, n_timesteps]), big.mark = ","), "<br>",
-      "Number of juveniles: ", format(subset[1, n_timesteps], big.mark = ","), "<br>",
-      "Number of adults: ", format(subset[2, n_timesteps], big.mark = ","), "<br>"
+      "Total population: ", format(sum(subset[1:2, data$n_timesteps]), big.mark = ","), "<br>",
+      "Number of juveniles: ", format(subset[1, data$n_timesteps], big.mark = ","), "<br>",
+      "Number of adults: ", format(subset[2, data$n_timesteps], big.mark = ","), "<br>"
     ))
     
     
