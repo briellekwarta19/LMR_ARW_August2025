@@ -1,7 +1,6 @@
 library(shiny)
-library(metapopbio)
-library(bslib)
 
+<<<<<<< HEAD
 #### to do: 
 #-below chunk must be run before the app. Fix this!
 #add deterrents? 
@@ -142,10 +141,15 @@ ui <- page_sidebar(
   
   
   
+=======
+ui <- fluidPage(
+  tags$img(src = "carp_photo.png", height = "300px")
+>>>>>>> abc04b82990822c6476808b05538f0795516e682
 )
 
-#### Server ####
+server <- function(input, output) {}
 
+<<<<<<< HEAD
 # Define server logic required to draw a histogram
 server <- function(input, output) {
   
@@ -272,3 +276,6 @@ server <- function(input, output) {
 
 # Run the application 
 shinyApp(ui = ui, server = server)
+=======
+shinyApp(ui, server)
+>>>>>>> abc04b82990822c6476808b05538f0795516e682
