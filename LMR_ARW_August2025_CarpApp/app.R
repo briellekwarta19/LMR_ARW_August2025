@@ -8,12 +8,7 @@ library(plyr)
 library(ggrepel)
 
 #### to do: 
-#add deterrents? 
-deter_names <-  c('None', 'One lower', 'Two lower', 'One leading edge',
-                  'Two leading edge', 'One lower + one leading edge ', 'Two lower + one leading edge',
-                  'Two lower + two leading edge')
-
-#add way to add in file into the shinyapp
+#add deterrents
 
 #-----------------------------------------------#
 #### Functions ####
@@ -814,6 +809,75 @@ filename <- "LMRARW-ICPMM-AR-Demo.xlsm"
 c(n_stages, n_patches, grouping, lh_order, n_timesteps,
   stage_names, patch_names, n, matrices, MM, BB) %<-% carp_dat
 
+#Create data frame that lists strategy names:
+harv.vals <- seq(0,0.2,0.05)
+
+#### TO DO: uncomment ####
+# deter_names <-  c('None', 'One lower', 'Two lower', 'One leading edge',
+#                   'Two leading edge', 'One lower + one leading edge ', 'Two lower + one leading edge',
+#                   'Two lower + two leading edge')
+
+deter_names <-  c('None')
+
+strategy_names <- expand.grid(harv = as.numeric_version(harv.vals), deter = deter_names)
+
+
+#Create the vec-permutation matrix (dimension = stages*patches x stages*patches)
+#this stays the same across all management strategies
+P <- vec.perm(n_stages = n_stages,
+                          n_patches = n_patches,
+                          grouping = grouping)
+
+#### TO DO: A WILL BE UPDATED WITH DETERANTS ####
+#harvest only strategies
+A <- spmm.project.matrix(P, #vec-permutation matrix,
+                         BB, #block diagonal matrix for demographic paramters 
+                         MM, #block diagonal for movement paramters
+                         grouping = grouping, #grouping projections (by patches here)
+                         lh_order = lh_order) #order of events (demographic before movement here)
+
+harv.vals <- seq(0,0.2,0.05)
+harv.strategies <- array(0, c(length(harv.vals), n_patches))
+for(i in 1:length(harv.vals)){
+  harv.strategies[i,1:10] <- harv.vals[i]
+}
+
+projs <- list()
+
+for(i in 1:length(harv.vals)){
+  projs[[i]] <- spmm.project2(
+    n = n,  # number of stage/age animals in patch i
+    A = A,
+    BB = BB,
+    MM = MM,
+    P = P,
+    n_timesteps = n_timesteps,
+    n_stages = n_stages,
+    n_patches = n_patches, 
+    mod_mort = harv.strategies[i,]
+  )
+}
+
+# calculate cost per strategy
+calculate.cost <- function(harvest_mortality) {
+  initial_cost <- 100000  # Initial cost for 0.01 harvest mortality
+  growth_rate <- 1.1  # 10% increase
+  cost <- ifelse(harvest_mortality == 0, 0, initial_cost * (growth_rate) ^ (harvest_mortality / 0.01))
+  return(cost)
+}
+
+##### To do: add deterant costs ####
+harv.vals <- seq(0,0.2,0.05)
+deter.nums <-  c(0) #, 1, 2, 1, 2, 2, 3,4)
+
+strategy_cost <- expand.grid(harv = harv.vals, deter.nums = deter.nums)
+
+strategy_cost <- strategy_cost %>% mutate(
+  cost = calculate.cost(harv) + deter.nums*calculate.cost(0.2)
+)
+
+strategy_cost$cost <- ceiling(strategy_cost$cost)
+
 # #### UI ####
 ui <- navbarPage(
   title = "LMR-ARW-iCARP",
@@ -874,7 +938,7 @@ ui <- navbarPage(
                    tabPanel("Single Patch",
                             fluidPage(
                               selectInput(
-                                "var",
+                                "patch",
                                 label = "Choose a patch to display",
                                 choices = patch_names,
                                 selected = patch_names[1]
@@ -939,7 +1003,7 @@ ui <- navbarPage(
                         "maxpop",
                         label = "Population constraint:",
                         min = 0, 
-                        max = 50000, 
+                        max = 90000, 
                         value = 25000,
                         step = 1000
                       ),
@@ -987,45 +1051,18 @@ server <- function(input, output) {
   
   output$FinalPopAll <- renderUI({
     
-    filename <- "LMRARW-ICPMM-AR-Demo.xlsm"
-    (carp_dat <- metapopbio::spmm.readxl("", filename))
-    c(n_stages, n_patches, grouping, lh_order, n_timesteps,
-      stage_names, patch_names, n, matrices, MM, BB) %<-% carp_dat
+    select <- which(strategy_names$harv == input$harv & 
+                      strategy_names$deter == input$deter)
     
-    #1. creating the vec-permutation matrix (dimension = stages*patches x stages*patches)
-    P <- vec.perm(n_stages = n_stages,
-                  n_patches = n_patches,
-                  grouping = grouping)
+    projs_select <- projs[[select]]
+    cost_select <- strategy_cost$cost[select]
     
-    #2. Create projection matrix
-    A <- spmm.project.matrix(P, #vec-permutation matrix,
-                             BB, #block diagonal matrix for demographic paramters 
-                             MM, #block diagonal for movement paramters
-                             grouping = grouping, #grouping projections (by patches here)
-                             lh_order = lh_order) #order of events (demographic before movement here)
-    
-    
-    
-    #3. Make projections and plots
-    projs <- spmm.project2(
-      n = n,  # number of stage/age animals in patch i
-      A = A,
-      BB = BB,
-      MM = MM,
-      P = P,
-      n_timesteps = n_timesteps,
-      n_stages = n_stages,
-      n_patches = n_patches,
-      mod_mort = input$harv#,
-      #mod_move = input$deter
-    )
-    
-    #4. Display costs:
+    #Display summary:
     
     HTML(paste0(
       "<b> Total final relative abundance across all patches: <b>",
-      format(sum(projs[, n_timesteps]), big.mark = ","), "<br>",
-      "Total cost: $", format(ceiling(calculate.cost(input$harv)), big.mark = ",", scientific = FALSE)
+      format(sum(projs_select[, n_timesteps]), big.mark = ","), "<br>",
+      "Total relative cost: $", format(cost_select, big.mark = ",", scientific = FALSE)
     ))
     
   })
@@ -1038,43 +1075,15 @@ server <- function(input, output) {
   
   ###### Plot ######
   output$Plot <- renderPlot({
-    
-    filename <- "LMRARW-ICPMM-AR-Demo.xlsm"
-    (carp_dat <- metapopbio::spmm.readxl("", filename))
-    c(n_stages, n_patches, grouping, lh_order, n_timesteps,
-      stage_names, patch_names, n, matrices, MM, BB) %<-% carp_dat
-    
-    #1. creating the vec-permutation matrix (dimension = stages*patches x stages*patches)
-    P <- vec.perm(n_stages = n_stages,
-                  n_patches = n_patches,
-                  grouping = grouping)
-    
-    #2. Create projection matrix
-    A <- spmm.project.matrix(P, #vec-permutation matrix,
-                             BB, #block diagonal matrix for demographic paramters 
-                             MM, #block diagonal for movement paramters
-                             grouping = grouping, #grouping projections (by patches here)
-                             lh_order = lh_order) #order of events (demographic before movement here)
-    
-    
-    projs <- spmm.project2(
-      n = n,  # number of stage/age animals in patch i
-      A = A,
-      BB = BB,
-      MM = MM,
-      P = P,
-      n_timesteps = n_timesteps,
-      n_stages = n_stages,
-      n_patches = n_patches, 
-      mod_mort = input$harv#,
-      #mod_move = input$deter
-    )
-    
     patch_match <- rep(patch_names, each = n_stages)
-    ex_patch <- input$var
+    ex_patch <- input$patch
     
-    subset <- projs[which(patch_match == ex_patch),]
-    comment(subset) <- comment(projs)
+    select <- which(strategy_names$harv == input$harv & 
+                      strategy_names$deter == input$deter)
+    
+    subset <- projs[[select]][which(patch_match == ex_patch),]
+    comment(subset) <- comment(projs[[select]])
+    
     
     spmm.plot2(subset, 
                ylabs = "Rel. Abund.",
@@ -1086,91 +1095,33 @@ server <- function(input, output) {
   
   ###### Details ######
   output$FinalPop <- renderUI({
-    filename <- "LMRARW-ICPMM-AR-Demo.xlsm"
-    (carp_dat <- metapopbio::spmm.readxl("", filename))
-    c(n_stages, n_patches, grouping, lh_order, n_timesteps,
-      stage_names, patch_names, n, matrices, MM, BB) %<-% carp_dat
-    
-    #1. creating the vec-permutation matrix (dimension = stages*patches x stages*patches)
-    P <- vec.perm(n_stages = n_stages,
-                  n_patches = n_patches,
-                  grouping = grouping)
-    
-    #2. Create projection matrix
-    A <- spmm.project.matrix(P, #vec-permutation matrix,
-                             BB, #block diagonal matrix for demographic paramters 
-                             MM, #block diagonal for movement paramters
-                             grouping = grouping, #grouping projections (by patches here)
-                             lh_order = lh_order) #order of events (demographic before movement here)
-    
-    
-    projs <- spmm.project2(
-      n = n,  # number of stage/age animals in patch i
-      A = A,
-      BB = BB,
-      MM = MM,
-      P = P,
-      n_timesteps = n_timesteps,
-      n_stages = n_stages,
-      n_patches = n_patches,
-      mod_mort = input$harv#,
-      #mod_move = input$deter
-    )
     
     patch_match <- rep(patch_names, each = n_stages)
-    ex_patch <- input$var
+    ex_patch <- input$patch
     
-    subset <- projs[which(patch_match == ex_patch),]
-    comment(subset) <- comment(projs)
+    select <- which(strategy_names$harv == input$harv & 
+                      strategy_names$deter == input$deter)
+    
+    subset <- projs[[select]][which(patch_match == ex_patch),]
+    
     
     HTML(paste0(
       "<b> Final relative abundance summary</b><br>",
-      "Patch selected: ", input$var, "<br>",
+      "Patch selected: ", input$patch, "<br>",
       "Total population: ", format(sum(subset[1:2, n_timesteps]), big.mark = ","), "<br>",
       "Number of juveniles: ", format(subset[1, n_timesteps], big.mark = ","), "<br>",
       "Number of adults: ", format(subset[2, n_timesteps], big.mark = ","), "<br>"
     ))
-    
-    
-    
+
   })
   
   
   ###### All patches plot ######
   output$AllPlot <- renderPlot({
     
-    filename <- "LMRARW-ICPMM-AR-Demo.xlsm"
-    (carp_dat <- metapopbio::spmm.readxl("", filename))
-    c(n_stages, n_patches, grouping, lh_order, n_timesteps,
-      stage_names, patch_names, n, matrices, MM, BB) %<-% carp_dat
+   
     
-    #1. creating the vec-permutation matrix (dimension = stages*patches x stages*patches)
-    P <- vec.perm(n_stages = n_stages,
-                  n_patches = n_patches,
-                  grouping = grouping)
-    
-    #2. Create projection matrix
-    A <- spmm.project.matrix(P, #vec-permutation matrix,
-                             BB, #block diagonal matrix for demographic paramters 
-                             MM, #block diagonal for movement paramters
-                             grouping = grouping, #grouping projections (by patches here)
-                             lh_order = lh_order) #order of events (demographic before movement here)
-    
-    
-    projs <- spmm.project2(
-      n = n,  # number of stage/age animals in patch i
-      A = A,
-      BB = BB,
-      MM = MM,
-      P = P,
-      n_timesteps = n_timesteps,
-      n_stages = n_stages,
-      n_patches = n_patches, 
-      mod_mort = input$harv#,
-     # mod_move = input$deter
-    )
-    
-    projs_mat <- projs
+    projs_mat <- projs[[select]]
     
     projs_juvenile <- projs_mat[seq(1, nrow(projs_mat), by = 2), ]
     projs_adult <- projs_mat[seq(2, nrow(projs_mat), by = 2), ]
@@ -1296,8 +1247,8 @@ server <- function(input, output) {
     ggplot(strategies_outcomes)+
       geom_point(aes(x = Cost, y = TotalN, fill = Strategy), shape = 21, size = 5)+
       theme_bw() +   
-      ylab("Final total population across all patches") +
-      xlab("Management cost ($)")+
+      ylab("Final total relative population across all patches") +
+      xlab("Relative management cost ($)")+
       geom_hline(yintercept = maxpop, linetype = 'dashed')+
       geom_vline(xintercept = maxcost, linetype = 'dashed')+
       geom_text(aes(label = optimal_text, 

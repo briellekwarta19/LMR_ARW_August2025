@@ -11,12 +11,12 @@ c(n_stages, n_patches, group_by, lh_order, n_timesteps,
 
 #Create data frame that lists strategy names:
 harv.vals <- seq(0,0.2,0.05)
-deter.names <-  c('None', 'One lower', 'Two lower', 'One leading edge',
+deter_names <-  c('None', 'One lower', 'Two lower', 'One leading edge',
                   'Two leading edge', 'One lower + one leading edge ', 'Two lower + one leading edge',
                   'Two lower + two leading edge')
 
-strategy_names <- expand.grid(harv.vals, deter.names)
-colnames(strategy_names) <- c('harv', 'deter')
+strategy_names <- expand.grid(harv = as.numeric_version(harv.vals), deter = deter_names)
+
 
 #Create the vec-permutation matrix (dimension = stages*patches x stages*patches)
 #this stays the same across all management strategies
@@ -132,6 +132,59 @@ strategy_cost <- expand.grid(harv = harv.vals, deter = deter.nums)
 strategy_cost <- strategy_cost %>% mutate(
   cost = calculate.cost(harv) + deter*calculate.cost(0.2)
 )
+
+##### pareto plots ####
+final_pop <- final_dist <- rep(NA, length(projs))
+
+for(i in 1:length(projs)){
+  projs_select <- projs[[i]]
+  final_pop[i] <- sum(projs_select[, n_timesteps])
+  
+  summed_pop <- projs_select[seq(1, nrow(projs_select), by = 2), ] + projs_select[seq(2, nrow(projs_select), by = 2), ]
+
+  final_dist[i] <- sum(summed_pop[,n_timesteps] >= 0)
+}
+
+strategy_outcomes <- strategy_cost
+
+strategy_outcomes$deter <- strategy_names$deter
+strategy_outcomes$pop <- final_pop #final population
+strategy_outcomes$dist <- final_dist # of patches with population
+
+library(rPref)
+test <- psel(strategy_outcomes, low(cost) * low(pop))
+
+find_knee_point <- function(x, y) {
+  # Normalize the data
+  x_norm <- (x - min(x)) / (max(x) - min(x))
+  y_norm <- (y - min(y)) / (max(y) - min(y))
+  
+  # Flip y if needed (to make both increasing)
+  y_norm <- 1 - y_norm
+  
+  # Line from first to last point
+  line_vec <- c(x_norm[length(x_norm)] - x_norm[1], y_norm[length(y_norm)] - y_norm[1])
+  line_vec <- line_vec / sqrt(sum(line_vec^2))
+  
+  # Compute distances
+  distances <- sapply(1:length(x_norm), function(i) {
+    point_vec <- c(x_norm[i] - x_norm[1], y_norm[i] - y_norm[1])
+    proj_len <- sum(point_vec * line_vec)
+    proj_point <- line_vec * proj_len
+    perp_vec <- point_vec - proj_point
+    sqrt(sum(perp_vec^2))
+  })
+  
+  
+  # Find index of max distance
+  knee_index <- which.max(distances)
+  return(knee_index)
+  
+  
+}
+
+#Knee point: trade-off between Cost and TotalN changes most sharply
+KP <- find_knee_point(strategy_outcomes$cost, strategy_outcomes$pop)
 
 ##### Save to load ######
 #projs
