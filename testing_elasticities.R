@@ -67,7 +67,7 @@ for (i in 1:10) {
   B <- harv_mat[i]
   
   M <- -log(B[[1]][-1, ])  
-  M <- M + 0.1 #This will be adjusted per strategy
+  M <- M + 0.5 #This will be adjusted per strategy
   
   B[[1]][-1, ] <- exp(-M)
   harv_mat[i] <- B
