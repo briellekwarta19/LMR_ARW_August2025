@@ -1,7 +1,7 @@
-# install.packages("devtools")
-# devtools::install_github("AldridgeCaleb/meta-pop-bio")
+#install.packages("devtools")
+#devtools::install_github("AldridgeCaleb/meta-pop-bio")
 library("metapopbio")
-
+library(tidyverse)
 #loading data
 path <- here::here()
 filename <- "/LMRARW-ICPMM-AR-Demo.xlsm"
@@ -48,8 +48,6 @@ A_base <- spmm.project.matrix(P, #vec-permutation matrix,
 
 #extracting elasticities for the base model (no harvest, no deterrents)
 BB_e_base <- spmm.demo.elas(BB,A_base,P,MM)
-BB_e_base <- ifelse(Im(BB_e_base) != 0, 0, BB_e_base) #dealing with imaginary numbers bit
-BB_e_base <- matrix(as.numeric(BB_e_base), ncol = (n_stages*n_patches), nrow = (n_stages*n_patches)) #dealing with imaginary numbers bit
 
 #extracting location of top 5 rates
 top5_BB_base <- order(BB_e_base, decreasing = TRUE)[1:5]
@@ -65,7 +63,7 @@ top5_BB_base_df$type <- 'base model'
 harv_mat <- unblk.diag(BB, n_stages)
 
 #Need to make a new BB matrix for the new harvest
-for (i in 10) {
+for (i in 1:10) {
   B <- harv_mat[i]
   
   M <- -log(B[[1]][-1, ])  
@@ -89,8 +87,6 @@ A_harv <- spmm.project.matrix(P, #vec-permutation matrix,
 
 #extracting elasticities for this strategy
 BB_e_harv <- spmm.demo.elas(BB_harv,A_harv,P,MM)
-BB_e_harv <- ifelse(Im(BB_e_harv) != 0, 0, BB_e_harv) #dealing with imaginary numbers bit
-BB_e_harv <- matrix(as.numeric(BB_e_harv), ncol = (n_stages*n_patches), nrow = (n_stages*n_patches)) #dealing with imaginary numbers bit
 
 #find elasticity values from the harvest BB model that match the top 5 ones in the base model
 #and combine into a dataframe which matches with the rate name:
@@ -104,10 +100,8 @@ top5_bb <- rbind(top5_BB_base_df, top5_BB_harv_df)
 ggplot(top5_bb, aes(x = value, y = rate, fill = type))+
   geom_col(position = "dodge") + ggtitle("BB elasticities")
 
-
-
 #Question: should BB_e_harv equal BB_e_base??
-all.equal(BB_e_harv, BB_e_base)
+#all.equal(BB_e_harv, BB_e_base)
 
 
 
