@@ -9,6 +9,10 @@ library(ggrepel)
 
 #### to do: 
 #add deterrents? 
+deter_names <-  c('None', 'One lower', 'Two lower', 'One leading edge',
+                  'Two leading edge', 'One lower + one leading edge ', 'Two lower + one leading edge',
+                  'Two lower + two leading edge')
+
 #add way to add in file into the shinyapp
 
 #-----------------------------------------------#
@@ -819,8 +823,7 @@ ui <- navbarPage(
            fluidPage(
              h2("Invasive Carp Management App"),
              p("This app allows you to explore how different harvest and deterrent levels affect carp relative abundance across 'patches' in the Lower Mississippi River/Arkansas Red-White Rivers"),
-             p("Navigate to the 'Collective Strategies' tab to explore harvest and deterrent strategies that are enacted across all patches equally"),
-             p("Navigate to the 'Location Bound Strategies' tab to explore a subset of harvest and deterrent strategies that are performed on specific patches"),
+             p("Navigate to the 'Management Strategies' tab to explore harvest and deterrent strategies"),
              p("Navigate to the 'Navigate Tradeoffs' tab to examine tradeoffs between final population abudnance and cost across different management strategies"),
              tags$hr(),
              tags$div(
@@ -834,8 +837,8 @@ ui <- navbarPage(
            )
   ),
   
-  ##### Collective strategies #####
-  tabPanel("Collective Strategies",
+  ##### Management Strategies ####
+  tabPanel("Management Strategies",
            fluidRow(
              # Sidebar (left)
              column(
@@ -843,21 +846,19 @@ ui <- navbarPage(
                wellPanel(
                  helpText("Select different harvest and deterrent levels below and the 'Single Patch' panel to see outcomes for a specific patch and navigate to the 'All Patches' panel to see results across all locations"),
                  sliderInput(
-                   "bins",
+                   "harv",
                    label = "Harvest level:",
                    min = 0, 
-                   max = 1, 
+                   max = 0.2, 
                    value = 0,
                    step = 0.05
                  ),
-                  sliderInput(
-                    "deter",
-                    label = "Deterrent level:",
-                    min = 0, 
-                    max = 1, 
-                    value = 0, 
-                    step = 0.05
-                  )
+                 selectInput(
+                   "deter",
+                   label = "Deterrent action:",
+                   choices = deter_names,
+                   selected = deter_names[1]
+                 )
                )
              ),
              
@@ -903,14 +904,6 @@ ui <- navbarPage(
           )
   ),
   
-
-  ##### Location bound #####
-  # Location specific strategies
-  tabPanel("Location Bound Strategies",
-           fluidPage(
-             h2("To do! Add these strategies")
-           )
-  ),
   
   #### Tradeoffs #####
   #Navigate Tradeoffs
@@ -970,15 +963,19 @@ ui <- navbarPage(
                     )
                   )
              )
-           ),
-            tabPanel("Location Bound Strategies",
-                    fluidRow()
-           
-        )
+           )
       )
     )
   
+  ),
+  
+  tabPanel("Sensitivity Analysis",
+           fluidPage(
+             h2("Add here")
+           )
   )
+  
+  
 )
 
 #### Server ####
@@ -1019,8 +1016,8 @@ server <- function(input, output) {
       n_timesteps = n_timesteps,
       n_stages = n_stages,
       n_patches = n_patches,
-      mod_mort = input$bins,
-      mod_move = input$deter
+      mod_mort = input$harv#,
+      #mod_move = input$deter
     )
     
     #4. Display costs:
@@ -1028,7 +1025,7 @@ server <- function(input, output) {
     HTML(paste0(
       "<b> Total final relative abundance across all patches: <b>",
       format(sum(projs[, n_timesteps]), big.mark = ","), "<br>",
-      "Total cost: $", format(ceiling(calculate.cost(input$bins)), big.mark = ",", scientific = FALSE)
+      "Total cost: $", format(ceiling(calculate.cost(input$harv)), big.mark = ",", scientific = FALSE)
     ))
     
   })
@@ -1069,8 +1066,8 @@ server <- function(input, output) {
       n_timesteps = n_timesteps,
       n_stages = n_stages,
       n_patches = n_patches, 
-      mod_mort = input$bins,
-      mod_move = input$deter
+      mod_mort = input$harv#,
+      #mod_move = input$deter
     )
     
     patch_match <- rep(patch_names, each = n_stages)
@@ -1116,8 +1113,8 @@ server <- function(input, output) {
       n_timesteps = n_timesteps,
       n_stages = n_stages,
       n_patches = n_patches,
-      mod_mort = input$bins,
-      mod_move = input$deter
+      mod_mort = input$harv#,
+      #mod_move = input$deter
     )
     
     patch_match <- rep(patch_names, each = n_stages)
@@ -1169,8 +1166,8 @@ server <- function(input, output) {
       n_timesteps = n_timesteps,
       n_stages = n_stages,
       n_patches = n_patches, 
-      mod_mort = input$bins,
-      mod_move = input$deter
+      mod_mort = input$harv#,
+     # mod_move = input$deter
     )
     
     projs_mat <- projs

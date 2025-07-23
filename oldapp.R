@@ -5,9 +5,14 @@ library(dplyr)
 library(tidyverse)
 library(scales)
 library(plyr)
+library(ggrepel)
 
 #### to do: 
 #add deterrents? 
+deter_names <-  c('None', 'One lower', 'Two lower', 'One leading edge',
+                  'Two leading edge', 'One lower + one leading edge ', 'Two lower + one leading edge',
+                  'Two lower + two leading edge')
+
 #add way to add in file into the shinyapp
 
 #-----------------------------------------------#
@@ -813,74 +818,67 @@ c(n_stages, n_patches, grouping, lh_order, n_timesteps,
 ui <- navbarPage(
   title = "LMR-ARW-iCARP",
   
-  # Introduction Tab
-  
+  ##### Introduction #####
   tabPanel("Introduction",
            fluidPage(
              h2("Invasive Carp Management App"),
              p("This app allows you to explore how different harvest and deterrent levels affect carp relative abundance across 'patches' in the Lower Mississippi River/Arkansas Red-White Rivers"),
-             p("Navigate to the 'Explore Strategies' tab to explore harvest and deterrent strategies"),
-             p("Navigate to the 'Navigate Tradeoffs' tab to identify tradeoffs between management outcomes and cost"),
+             p("Navigate to the 'Management Strategies' tab to explore harvest and deterrent strategies"),
+             p("Navigate to the 'Navigate Tradeoffs' tab to examine tradeoffs between final population abudnance and cost across different management strategies"),
              tags$hr(),
              tags$div(
                tags$h4("Map of a subset of 'patches' in the Arkansas River", style = "text-align: center;"),
                
-               # Add image here
-               tags$img(src = "StudyArea.png", height = "500px", style = "display: block; margin-left: auto; margin-right: auto; margin-top: 20px; margin-bottom: 20px;"),
+                # Add image here
+                tags$img(src = "StudyArea.png", height = "500px", style = "display: block; margin-left: auto; margin-right: auto; margin-top: 20px; margin-bottom: 20px;"),
              ), 
              tags$hr(),
              p("Developed by Brielle Thompson & Caleb Aldridge")
            )
   ),
   
-  # Explore Tab
-  tabPanel("Explore Strategies",
+  ##### Management Strategies ####
+  tabPanel("Management Strategies",
            fluidRow(
+             # Sidebar (left)
              column(
-               width = 3,  # Narrower sidebar
+               width = 3,
                wellPanel(
-                 helpText("Explore outcomes of harvest and deterrent strategies"),
-                 selectInput(
-                   "var",
-                   label = "Choose a patch to display",
-                   choices = patch_names,
-                   selected = patch_names[1]
-                 ),
+                 helpText("Select different harvest and deterrent levels below and the 'Single Patch' panel to see outcomes for a specific patch and navigate to the 'All Patches' panel to see results across all locations"),
                  sliderInput(
-                   "bins",
+                   "harv",
                    label = "Harvest level:",
                    min = 0, 
-                   max = 1, 
+                   max = 0.2, 
                    value = 0,
                    step = 0.05
                  ),
-                 sliderInput(
+                 selectInput(
                    "deter",
-                   label = "Deterrant level:",
-                   min = 0, 
-                   max = 1, 
-                   value = 0, 
-                   step = 0.05
+                   label = "Deterrent action:",
+                   choices = deter_names,
+                   selected = deter_names[1]
                  )
                )
              ),
              
-             
-             
-             
+             # Main content (right)
              column(
                width = 9,
-               fluidRow(
-                 column(
-                   width = 12,
-                   uiOutput("FinalPopAll", style = "padding-top: 20px; font-weight: bold;font-size: 23px;"),
-                   tags$hr(style = "border-top: 2px solid #bbb; margin-top: 10px; margin-bottom: 20px;"),
-                   uiOutput("Patch", style = "padding-top: 10px; font-weight: bold;font-size: 22px;")
-                 ),
-                 column(
-                   width = 12,
-                   tabsetPanel(
-                     tabPanel("Single Patch",
+               fluidPage(
+                 uiOutput("FinalPopAll", style = "padding-top: 20px; font-weight: bold;font-size: 23px;"),
+                 tags$hr(style = "border-top: 2px solid #bbb; margin-top: 10px; margin-bottom: 20px;"),
+                 uiOutput("Patch", style = "padding-top: 10px; font-weight: bold;font-size: 22px;"),
+                 
+                 tabsetPanel(
+                   tabPanel("Single Patch",
+                            fluidPage(
+                              selectInput(
+                                "var",
+                                label = "Choose a patch to display",
+                                choices = patch_names,
+                                selected = patch_names[1]
+                              ),
                               fluidRow(
                                 column(
                                   width = 8,
@@ -891,71 +889,94 @@ ui <- navbarPage(
                                   uiOutput("FinalPop", style = "padding-top: 20px;")
                                 )
                               )
-                     ),
-                     tabPanel("All Patches",
+                            )
+                   ),
+                   tabPanel("All Patches",
+                            fluidPage(
                               tags$img(src = "VectorStudyArea.png", height = "500px", width = "100%"),
                               br(), 
                               plotOutput("AllPlot", height = "400px", width = "100%")
-                     )
+                            )
                    )
-                 )
                )
              )
-             
-             
-             
            )
-  ), 
-  # Tradeoffs Tab
+          )
+  ),
+  
+  
+  #### Tradeoffs #####
+  #Navigate Tradeoffs
   tabPanel("Navigate Tradeoffs",
            fluidPage(
-             fluidRow(
-               column(
-                 width = 3,  # Narrower sidebar
-                 wellPanel(
-                   helpText("Compare chosen management strategy against other potential actions"),
-                   
-                   sliderInput(
-                     "harvs",
-                     label = "Selected harvest level:",
-                     min = 0, 
-                     max = 1, 
-                     value = 0,
-                     step = 0.05
-                   ),
-                   sliderInput(
-                     "maxpop",
-                     label = "Population constraint (maximum population):",
-                     min = 0, 
-                     max = 50000, 
-                     value = 25000,
-                     step = 1000
-                   ),
-                   sliderInput(
-                     "maxcost",
-                     label = "Cost constraint (maximum cost):",
-                     min = 0, 
-                     max = 1000000000, 
-                     value = 500000000,
-                     step = 500000
-                   )
-                 )
-               ),
-               column(
-                 width = 9,
-                 fluidRow(
-                   column(
-                     width = 8,
-                     plotOutput("ParetoPlot", height = "400px", width = "100%")
-                   )
-                 )
-               )
+             p("Here we are identifying tradeoffs between management outcomes and management costs."),
+             p("To analyze this tradeoff, first select your desired harvest level which will appear as the purple point in the plot.
+             Then, you can identify your population constraint - referring to your maximum desirable population size, and also select 
+               your cost constraint - referring to your maximum budget."),
+             p("The resulting plot shows all management strategies with discarded strategies shown in gray (i.e., it has greater population and/or cost than your constraints), 
+             your selected strategy in purple, and the optimal strategy that does best in having both low population and management cost (i.e., the knee point). 
+               The specific outcomes for the optimal and selected strategies are shown in text on the top right portion of the plot."),
+            
+             tags$hr(),
+             
+             tabsetPanel(
+               tabPanel("Collective Strategies",
+                fluidRow(
+                  column(
+                    width = 3,  # Narrower sidebar
+                    wellPanel(
+                      helpText("Select desired harvest level and popualtion and cost constraints"),
+                      
+                      sliderInput(
+                        "harvs",
+                        label = "Selected harvest level:",
+                        min = 0, 
+                        max = 1, 
+                        value = 0,
+                        step = 0.05
+                      ),
+                      sliderInput(
+                        "maxpop",
+                        label = "Population constraint:",
+                        min = 0, 
+                        max = 50000, 
+                        value = 25000,
+                        step = 1000
+                      ),
+                      sliderInput(
+                        "maxcost",
+                        label = "Cost constraint (in millions):",
+                        min = 0, 
+                        max = 1000,  # Represent millions
+                        value = 500,
+                        step = 5
+                      )
+                    )
+                  ),
+                  column(
+                    width = 9,
+                    fluidRow(
+                      column(
+                        width = 9,
+                        plotOutput("ParetoPlot", height = "400px", width = "100%")
+                      )
+                    )
+                  )
              )
+           )
+      )
+    )
+  
+  ),
+  
+  tabPanel("Sensitivity Analysis",
+           fluidPage(
+             h2("Add here")
            )
   )
   
+  
 )
-
 
 #### Server ####
 
@@ -995,8 +1016,8 @@ server <- function(input, output) {
       n_timesteps = n_timesteps,
       n_stages = n_stages,
       n_patches = n_patches,
-      mod_mort = input$bins,
-      mod_move = input$deter
+      mod_mort = input$harv#,
+      #mod_move = input$deter
     )
     
     #4. Display costs:
@@ -1004,7 +1025,7 @@ server <- function(input, output) {
     HTML(paste0(
       "<b> Total final relative abundance across all patches: <b>",
       format(sum(projs[, n_timesteps]), big.mark = ","), "<br>",
-      "Total cost: $", format(ceiling(calculate.cost(input$bins)), big.mark = ",", scientific = FALSE)
+      "Total cost: $", format(ceiling(calculate.cost(input$harv)), big.mark = ",", scientific = FALSE)
     ))
     
   })
@@ -1045,8 +1066,8 @@ server <- function(input, output) {
       n_timesteps = n_timesteps,
       n_stages = n_stages,
       n_patches = n_patches, 
-      mod_mort = input$bins,
-      mod_move = input$deter
+      mod_mort = input$harv#,
+      #mod_move = input$deter
     )
     
     patch_match <- rep(patch_names, each = n_stages)
@@ -1092,8 +1113,8 @@ server <- function(input, output) {
       n_timesteps = n_timesteps,
       n_stages = n_stages,
       n_patches = n_patches,
-      mod_mort = input$bins,
-      mod_move = input$deter
+      mod_mort = input$harv#,
+      #mod_move = input$deter
     )
     
     patch_match <- rep(patch_names, each = n_stages)
@@ -1145,8 +1166,8 @@ server <- function(input, output) {
       n_timesteps = n_timesteps,
       n_stages = n_stages,
       n_patches = n_patches, 
-      mod_mort = input$bins,
-      mod_move = input$deter
+      mod_mort = input$harv#,
+     # mod_move = input$deter
     )
     
     projs_mat <- projs
@@ -1239,7 +1260,7 @@ server <- function(input, output) {
     
     select <- which(as.factor(strategies_outcomes$H) == input$harvs)
     maxpop <- input$maxpop
-    maxcost <- input$maxcost
+    maxcost <- input$maxcost* 1e6
     
     strategies_outcomes$Strategy <- NA
     
@@ -1250,6 +1271,28 @@ server <- function(input, output) {
     strategies_outcomes$Strategy[c(-KP, -(select), -subop)] <- 'Potential Strategy'
     strategies_outcomes$Strategy[select] <- 'Selected Strategy'
     
+    
+    optimal_text <- strategies_outcomes %>% 
+      filter(Strategy %in% c('Optimal Strategy'))
+    
+    optimal_text <-  paste0("Abundance: ",
+      format(optimal_text$TotalN, big.mark = ","), 
+      " & Cost: $", format(ceiling(optimal_text$Cost/1e6), big.mark = ",", scientific = FALSE),
+      "M (harvest = ", optimal_text$H, ")"
+    )
+    
+    selected_text <- strategies_outcomes %>% 
+      filter(Strategy %in% c('Selected Strategy'))
+    
+    selected_text <-  paste0("Abundance: ",
+                            format(selected_text$TotalN, big.mark = ","), 
+                            " & Cost: $", format(ceiling(selected_text$Cost/1e6), big.mark = ",", scientific = FALSE),
+                            "M (harvest = ", selected_text$H, ")"
+    )
+    
+    
+    colors <- c('azure4', 'forestgreen', 'lightskyblue1', 'blueviolet')
+    
     ggplot(strategies_outcomes)+
       geom_point(aes(x = Cost, y = TotalN, fill = Strategy), shape = 21, size = 5)+
       theme_bw() +   
@@ -1257,6 +1300,13 @@ server <- function(input, output) {
       xlab("Management cost ($)")+
       geom_hline(yintercept = maxpop, linetype = 'dashed')+
       geom_vline(xintercept = maxcost, linetype = 'dashed')+
+      geom_text(aes(label = optimal_text, 
+                                         x = 1000000000, y = 47500),
+                color = 'forestgreen')+
+      geom_text(aes(label = selected_text,
+                    x = 1000000000, y = 45500),
+                color = 'blueviolet') +
+      scale_fill_manual(values = colors)+
       scale_x_continuous(labels = unit_format(unit = "M", scale = 1e-6))+
       theme(strip.background=element_rect(colour="white",
                                           fill="white"),
