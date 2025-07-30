@@ -1,4 +1,4 @@
-#install.packages("devtools")
+install.packages("devtools")
 devtools::install_github("AldridgeCaleb/meta-pop-bio")
 library("metapopbio")
 library(tidyverse)
@@ -9,6 +9,20 @@ filename <- "/LMRARW-ICPMM-AR-Demo.xlsm"
 
 c(n_stages, n_patches, group_by, lh_order, n_timesteps, 
   stage_names, patch_names, n, matrices, MM, BB) %<-% carp_dat
+
+base_movement <- unblk.diag(MM, n_patches)
+modify.movement <- function(movement_matrix, position, lower_factor = 0.95, upper_factor = 0.5) {
+  lwr_idx <- seq_len(position - 1)
+  upr_idx <- ifelse(position < ncol(movement_matrix), (position + 1):ncol(movement_matrix), integer(0))
+  movement_matrix[position, lwr_idx] <- movement_matrix[position, lwr_idx] * lower_factor
+  movement_matrix[position, upr_idx] <- movement_matrix[position, upr_idx] * upper_factor
+  movement_matrix[position, position] <- NA
+  movement_matrix[position, ] <- ifelse(is.na(movement_matrix[position, ]), 
+                                        1 - sum(movement_matrix[position, ], na.rm = TRUE), 
+                                        movement_matrix[position, ])
+  return(movement_matrix)
+}
+
 
 #here I am making a matrix where each value maps to the correct patch/stage/rate 
 patch_names <- rep(1:n_patches, each = n_stages)
@@ -31,7 +45,7 @@ for(i in 1:nrow(mat.id)){
 #test [1,1]
 mat.id[1:2,1:2]
 
-P <- metapopbio::vec.perm(n_stages = n_stages,
+P <- vec.perm(n_stages = n_stages,
                           n_patches = n_patches,
                           group_by = group_by)
 
@@ -40,14 +54,15 @@ P <- metapopbio::vec.perm(n_stages = n_stages,
 
 #1. Lets do this first for the basemodel
 A_base <- spmm.project.matrix(P, #vec-permutation matrix,
-                         BB, #block diagonal matrix for demographic paramters 
-                         MM, #block diagonal for movement paramters
-                         group_by = group_by, #grouping projections (by patches here)
-                         lh_order = lh_order) #order of events (demographic before movement here)
+                              BB, #block diagonal matrix for demographic paramters 
+                              MM, #block diagonal for movement paramters
+                              group_by = group_by, #grouping projections (by patches here)
+                              lh_order = lh_order) #order of events (demographic before movement here)
 
 
 #extracting elasticities for the base model (no harvest, no deterrents)
 BB_e_base <- spmm.demo.elas(BB,A_base,P,MM)
+sum(BB_e_base)
 
 #extracting location of top 5 rates
 top5_BB_base <- order(BB_e_base, decreasing = TRUE)[1:5]
@@ -67,7 +82,7 @@ for (i in 1:10) {
   B <- harv_mat[i]
   
   M <- -log(B[[1]][-1, ])  
-  M <- M + 0.2 #This will be adjusted per strategy
+  M <- M + 0.5 #This will be adjusted per strategy
   
   B[[1]][-1, ] <- exp(-M)
   harv_mat[i] <- B
@@ -87,6 +102,7 @@ A_harv <- spmm.project.matrix(P, #vec-permutation matrix,
 
 #extracting elasticities for this strategy
 BB_e_harv <- spmm.demo.elas(BB_harv,A_harv,P,MM)
+sum(BB_e_harv)
 
 #find elasticity values from the harvest BB model that match the top 5 ones in the base model
 #and combine into a dataframe which matches with the rate name:
@@ -97,13 +113,20 @@ top5_BB_harv_df$type <- 'harvest strategy'
 #3. combine top5 dataframes
 top5_bb <- rbind(top5_BB_base_df, top5_BB_harv_df)
 
-ggplot(top5_bb, aes(x = value, y = rate, fill = type))+
-  geom_col(position = "dodge") + ggtitle("BB elasticities")
+# Order from base
+ordered_rates <- top5_bb %>%
+  filter(type == "base model") %>%
+  arrange(value) %>%
+  pull(rate)
+top5_bb$rate <- factor(top5_bb$rate, levels = ordered_rates)
+
+# Plot
+ggplot(top5_bb, aes(x = value, y = rate, fill = type)) +
+  geom_col(position = "dodge") +
+  ggtitle("BB elasticities") +
+  labs(x = "Elasticity", y = "Rate") +
+  theme_minimal()
 
 #Question: should BB_e_harv equal BB_e_base??
 #all.equal(BB_e_harv, BB_e_base)
-
-
-
-
 

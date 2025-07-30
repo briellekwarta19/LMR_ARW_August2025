@@ -242,8 +242,8 @@ strategy_outcomes$deter <- strategy_names$deter
 strategy_outcomes$pop <- final_pop #final population
 strategy_outcomes$dist <- final_dist # of patches with population
 
-library(rPref)
-test <- psel(strategy_outcomes, low(cost) * low(pop))
+#library(rPref)
+#test <- psel(strategy_outcomes, low(cost) * low(pop))
 
 find_knee_point <- function(x, y) {
   # Normalize the data

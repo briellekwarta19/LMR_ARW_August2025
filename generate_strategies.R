@@ -132,8 +132,10 @@ for(i in 1:length(strategy_names$harv)){
     n = n,  # number of stage/age animals in patch i
     A = A[[i]],
     BB = BB,
+    #ddf = NA,
     MM = MMs[[strategy_names$deter[i]]],
     P = P,
+   # grouping = group_by,
     n_timesteps = n_timesteps,
     n_stages = n_stages,
     n_patches = n_patches, 
@@ -185,3 +187,26 @@ strategy_outcomes$num.invaded.patches <- final_dist # of patches with population
 
 strategy_outcomes %>% arrange(pop)
 strategy_outcomes %>% filter(harv == 0.2) %>% arrange(pop)
+
+strategy_outcomes$Strategy <- paste0(strategy_outcomes$harv, ' + ', strategy_outcomes$deter)
+
+ggplot(strategy_outcomes)+
+  geom_point(aes(x = cost, y = pop, color = Strategy))+
+  theme_bw() +   
+  ylab("Final total population across all patches") +
+  xlab("Management cost ($)")+
+ # geom_hline(yintercept = maxpop, linetype = 'dashed')+
+#  geom_vline(xintercept = maxcost, linetype = 'dashed')+
+ # scale_x_continuous(labels = unit_format(unit = "M", scale = 1e-6))+
+  theme(strip.background=element_rect(colour="white",
+                                      fill="white"),
+        strip.text.x = element_text(hjust = 0, margin=margin(l=0)),
+        panel.border = element_rect(colour = "gray", size = 1.5), 
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.ticks = element_blank(),
+        text = element_text(size = 15)
+  )
+
+test <- psel(strategy_outcomes, low(cost) * low(pop))
+test
