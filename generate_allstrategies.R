@@ -9,6 +9,11 @@ filename <- "/LMRARW-ICPMM-AR-Demo.xlsm"
 c(n_stages, n_patches, group_by, lh_order, n_timesteps, 
   stage_names, patch_names, n, matrices, MM, BB) %<-% carp_dat
 
+filename2 <- here::here("nid-info.xlsx")
+nid_info <- read.xlsx(filename2)
+
+K <- nid_info$K
+
 #Create data frame that lists strategy names:
 harv.vals <- seq(0,0.2,0.05)
 deter_names <-  c('None', 'One lower', 'Two lower', 'One leading edge',
@@ -134,6 +139,7 @@ for(i in 1:length(strategy_names$harv)){
     BB = BB,
     MM = MMs[[strategy_names$deter[i]]],
     P = P,
+    ddf = list(K = K, beta = 0.2, theta = 1.1),
     n_timesteps = n_timesteps,
     n_stages = n_stages,
     n_patches = n_patches, 
@@ -151,7 +157,7 @@ projs[[7]][,n_timesteps]
 #----plot for specific patch----#
 #subset plot
 patch_match <- rep(patch_names, each = n_stages)
-ex_patch <- 'MS River & Lower L&Ds'
+ex_patch <- 'Nimrod Dam'
 
 select <- which(strategy_names$harv == 0.1 & 
                   strategy_names$deter == which(deter_names == deter_names[2]))
@@ -161,6 +167,13 @@ comment(subset_harv) <- comment(projs[[select]])
 
 spmm.plot(subset_harv, 
           ylabs = "Rel. Abund.",
+          xlabs = "Years", 
+          stage_names = stage_names,
+          patch_names = ex_patch)
+
+
+spmm.plot(subset_harv, 
+          ylabs = "Biomass",
           xlabs = "Years", 
           stage_names = stage_names,
           patch_names = ex_patch)
@@ -195,7 +208,7 @@ ggplot(patch_df)+
     name = NULL
   ) +
   theme_bw() +   
-  ylab("Relative Abundance") +
+  ylab("Relative Biomass") +
   xlab("Years")+
   theme(strip.background=element_rect(colour="white",
                                       fill="white"),
@@ -225,60 +238,104 @@ strategy_cost <- strategy_cost %>% mutate(
 )
 
 ##### pareto plots ####
-final_pop <- final_dist <- rep(NA, length(projs))
+final_bio <- final_dist <- rep(NA, length(projs))
 
 for(i in 1:length(projs)){
   projs_select <- projs[[i]]
-  final_pop[i] <- sum(projs_select[, n_timesteps])
+  final_bio[i] <- sum(projs_select[, n_timesteps])
   
-  summed_pop <- projs_select[seq(1, nrow(projs_select), by = 2), ] + projs_select[seq(2, nrow(projs_select), by = 2), ]
+  summed_bio <- projs_select[seq(1, nrow(projs_select), by = 2), ] + projs_select[seq(2, nrow(projs_select), by = 2), ]
 
-  final_dist[i] <- sum(summed_pop[,n_timesteps] >= 0)
+  final_dist[i] <- sum(summed_bio[,n_timesteps] >= 0)
 }
 
 strategy_outcomes <- strategy_cost
 
-strategy_outcomes$deter <- strategy_names$deter
-strategy_outcomes$pop <- final_pop #final population
-strategy_outcomes$dist <- final_dist # of patches with population
+strategy_outcomes$deter <- deter_names[strategy_names$deter]
+strategy_outcomes$biomass <- final_bio #final population
 
-#library(rPref)
-#test <- psel(strategy_outcomes, low(cost) * low(pop))
+select <- 2 #which(as.factor(strategy_outcomes$H) == input$harvs)
+#select <- which(strategy_names$harv == 0.1 & 
+#                  strategy_names$deter == which(deter_names == deter_names[2]))
+maxbio <- 15 * 1e12 #input$maxbio * 1e12
+maxcost <- 3000000 #input$maxcost* 1e6
 
-find_knee_point <- function(x, y) {
-  # Normalize the data
-  x_norm <- (x - min(x)) / (max(x) - min(x))
-  y_norm <- (y - min(y)) / (max(y) - min(y))
-  
-  # Flip y if needed (to make both increasing)
-  y_norm <- 1 - y_norm
-  
-  # Line from first to last point
-  line_vec <- c(x_norm[length(x_norm)] - x_norm[1], y_norm[length(y_norm)] - y_norm[1])
-  line_vec <- line_vec / sqrt(sum(line_vec^2))
-  
-  # Compute distances
-  distances <- sapply(1:length(x_norm), function(i) {
-    point_vec <- c(x_norm[i] - x_norm[1], y_norm[i] - y_norm[1])
-    proj_len <- sum(point_vec * line_vec)
-    proj_point <- line_vec * proj_len
-    perp_vec <- point_vec - proj_point
-    sqrt(sum(perp_vec^2))
-  })
-  
-  
-  # Find index of max distance
-  knee_index <- which.max(distances)
-  return(knee_index)
-  
-  
+
+library(rPref)
+PO <- psel(strategy_outcomes, low(cost) * low(biomass))
+PO 
+
+strategy_outcomes$Strategy <- NA
+strategy_outcomes$Strategy[as.numeric(rownames(PO))] <- 'Efficient Strategy'
+subop <- which(strategy_outcomes$cost > maxcost | strategy_outcomes$biomass > maxbio)
+strategy_outcomes$Strategy[subop] <- 'Discarded Strategy'
+strategy_outcomes$Strategy[c(-(as.numeric(rownames(PO))), -subop)] <- 'Dominated Strategy'
+
+strategy_outcomes$Strategy2 <- 'Not Selected'
+strategy_outcomes$Strategy2[select] <- 'Selected Strategy'
+
+colnames(strategy_outcomes)[5] <- "Strategy Type"
+colnames(strategy_outcomes)[6] <- "Selected Strategy"
+
+colors <- c('azure4', 'lightskyblue', 'darkgreen' )
+
+ggplot(strategy_outcomes)+
+  geom_point(aes(x = cost, y = biomass, color = `Strategy Type`, shape = `Selected Strategy`), size = 4)+
+  scale_shape_manual(values=c(19, 13))+
+  scale_color_manual(values = colors)+
+  theme_bw() +   
+  ylab("Final biomass across all patches") +
+  xlab("Management cost ($)")+
+  geom_hline(yintercept = maxbio, linetype = 'dashed')+
+  geom_vline(xintercept = maxcost, linetype = 'dashed')+
+  scale_y_continuous(labels = unit_format(unit = "T", scale = 1e-12))+
+  scale_x_continuous(labels = unit_format(unit = "M", scale = 1e-6))+
+  theme(strip.background=element_rect(colour="white",
+                                      fill="white"),
+        strip.text.x = element_text(hjust = 0, margin=margin(l=0)),
+        panel.border = element_rect(colour = "gray", size = 1.5), 
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.ticks = element_blank(),
+        text = element_text(size = 15)
+  )
+
+strategy_outcomes_table <- strategy_outcomes %>% filter(`Strategy Type` == 'Efficient Strategy' |
+                                                          `Selected Strategy` == "Selected Strategy")
+
+
+strategy_outcomes_table <- strategy_outcomes_table %>% arrange(`Selected Strategy`)
+colnames(strategy_outcomes_table) <- c('Harvest level', 'Deterrant level', 
+                                       'Cost', 'Biomass', 'Strategy Type', 'Selected Strategy')
+
+strategy_outcomes_table$Cost <- round((strategy_outcomes_table$Cost/ 1e6),2)
+strategy_outcomes_table$Biomass <- round((strategy_outcomes_table$Biomass/ 1e12),2)
+
+colnames(strategy_outcomes_table)[3:4] <- c("Cost (M)", "Biomass (T)")
+
+library(knitr)
+library(kableExtra)
+
+
+kbl <- kable(strategy_outcomes_table, "html") %>%
+  kable_classic("striped", full_width = F)
+
+# Apply row coloring based on Category
+for (i in 1: length(strategy_outcomes_table$`Harvest level`)) {
+  if (strategy_outcomes_table$`Strategy Type`[i] == "Discarded Strategy") {
+    kbl <- kbl %>% row_spec(i, background = colors[1], bold = T)
+  }
+  if (strategy_outcomes_table$`Strategy Type`[i] == "Dominated Strategy") {
+    kbl <- kbl %>% row_spec(i, background = colors[2], bold = T)
+  }
+  if (strategy_outcomes_table$`Strategy Type`[i] == "Efficient Strategy") {
+    kbl <- kbl %>% row_spec(i, background = colors[3], bold = T)
+  }
 }
 
-#Knee point: trade-off between Cost and TotalN changes most sharply
-KP <- find_knee_point(strategy_outcomes$cost, strategy_outcomes$pop)
+kbl
 
-##### Save to load ######
-#projs
-#strategy_cost
+
+
 
 

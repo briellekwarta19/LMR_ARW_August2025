@@ -1,5 +1,5 @@
-install.packages("devtools")
-devtools::install_github("AldridgeCaleb/meta-pop-bio")
+#install.packages("devtools")
+#devtools::install_github("AldridgeCaleb/meta-pop-bio")
 library("metapopbio")
 library(tidyverse)
 #loading data

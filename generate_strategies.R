@@ -1,5 +1,6 @@
 library("metapopbio")
 library(plyr)
+library(rPref)
 
 #Load data ---------------------------------------------------------------
 path <- here::here()
@@ -8,6 +9,11 @@ filename <- "/LMRARW-ICPMM-AR-Demo.xlsm"
 ## Assign objects from list
 c(n_stages, n_patches, group_by, lh_order, n_timesteps, 
   stage_names, patch_names, n, matrices, MM, BB) %<-% carp_dat
+
+filename2 <- here::here("nid-info.xlsx")
+nid_info <- read.xlsx(filename2)
+
+K <- nid_info$K
 
 #Create data frame that lists strategy names:
 harv_vals <- seq(0,0.2,0.05)
@@ -126,21 +132,20 @@ for(i in 1:length(strategy_names$harv)){
                            MMs[[strategy_names$deter[i]]], 
                            group_by = group_by, #change to grouping
                            lh_order = lh_order)
-   
 
   projs[[i]] <- spmm.project(
     n = n,  # number of stage/age animals in patch i
     A = A[[i]],
     BB = BB,
-    #ddf = NA,
     MM = MMs[[strategy_names$deter[i]]],
     P = P,
-   # grouping = group_by,
+    ddf = list(K = K, beta = 0.2, theta = 1.1),
     n_timesteps = n_timesteps,
     n_stages = n_stages,
     n_patches = n_patches, 
     mod_mort = harv.strategies[i,]
   )
+  
 }
 
 
@@ -184,10 +189,6 @@ strategy_outcomes$pop <- final_pop #final population
 strategy_outcomes$num.invaded.patches <- final_dist # of patches with population
 
 #checking out outcomes for top harvest strategy:
-
-strategy_outcomes %>% arrange(pop)
-strategy_outcomes %>% filter(harv == 0.2) %>% arrange(pop)
-
 strategy_outcomes$Strategy <- paste0(strategy_outcomes$harv, ' + ', strategy_outcomes$deter)
 
 ggplot(strategy_outcomes)+
@@ -195,9 +196,9 @@ ggplot(strategy_outcomes)+
   theme_bw() +   
   ylab("Final total population across all patches") +
   xlab("Management cost ($)")+
- # geom_hline(yintercept = maxpop, linetype = 'dashed')+
-#  geom_vline(xintercept = maxcost, linetype = 'dashed')+
- # scale_x_continuous(labels = unit_format(unit = "M", scale = 1e-6))+
+  geom_hline(yintercept = maxpop, linetype = 'dashed')+
+  geom_vline(xintercept = maxcost, linetype = 'dashed')+
+  scale_x_continuous(labels = unit_format(unit = "M", scale = 1e-6))+
   theme(strip.background=element_rect(colour="white",
                                       fill="white"),
         strip.text.x = element_text(hjust = 0, margin=margin(l=0)),

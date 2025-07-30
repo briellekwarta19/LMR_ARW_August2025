@@ -39,8 +39,7 @@ spmm.readxl <- function(path, filename) {
         rows = c(7:250),
         cols = c(1),
         colNames = TRUE
-      )[, 1]
-    )
+      )[, 1])
   patch_names <-
     as.vector(
       openxlsx::read.xlsx(
@@ -49,18 +48,15 @@ spmm.readxl <- function(path, filename) {
         rows = c(7:10000),
         cols = c(2),
         colNames = TRUE
-      )[, 1]
-    )
-  n <-
-    as.vector(as.matrix(
-      openxlsx::read.xlsx(
-        xlsxFile = paste0(path, filename),
-        sheet = "metadata",
-        rows = c(7:10000),
-        cols = c(3:252),
-        colNames = TRUE
-      )[, 1]
-    ))
+      )[, 1])
+  n <- as.vector(t(
+    rev(openxlsx::read.xlsx(
+      xlsxFile = paste0(path, filename),
+      sheet = "metadata",
+      rows = c(7:10000),
+      cols = c(3:252),
+      colNames = TRUE
+    ))))
   comment(n) <- grouping
   
   # movement matrices
@@ -113,7 +109,8 @@ spmm.readxl <- function(path, filename) {
 }
 
 spmm.plot2 <- function(projections, ylabs = NA, xlabs = NA, 
-                       stage_names = NA, patch_names = NA) {
+                      stage_names = NA, patch_names = NA,
+                      ylim_max = "overall") {
   comments <- comment(projections)
   grouping <- strsplit(comments, " +")[[1]][1]
   if (grouping == "patches") {
@@ -121,7 +118,7 @@ spmm.plot2 <- function(projections, ylabs = NA, xlabs = NA,
     n_patches <- as.numeric(strsplit(comments, " +")[[3]][1])
     
     graphics::par(
-      mfrow = c(1, 2),
+      mfrow = c(min(round(n_patches / 2, 0), 3), 2),
       mar = c(5, 5, 1.5, 0.5),
       oma = rep(0.5, 4)
     )
@@ -129,13 +126,19 @@ spmm.plot2 <- function(projections, ylabs = NA, xlabs = NA,
     starts <- seq(1, dim(projections)[1], by = n_stages)
     ends <- c(starts - 1, dim(projections)[1])[-1]
     # throw error if starts and ends != lengths()
-    for (i in 1:length(starts)) {
+    for (i in seq_along(starts)) {
+      idx <- starts[i]:ends[i]
+      if (ylim_max == "patch") {
+        ylim_vals <- c(0, round(max(projections[idx, , drop = FALSE]) + 1, -1))
+      } else {
+        ylim_vals <- c(0, round(max(projections) + 1, -1))
+      }
       graphics::matplot(
-        t(projections)[, c(starts[i]:ends[i])],
+        t(projections)[, idx],
         type = 'b',
         pch = 16,
         # col = c("black", "black"),
-        ylim = c(0, round(max(projections) +1, -1)),
+        ylim = ylim_vals,
         ylab = ylabs,
         xlab = xlabs,
         main = paste("Patch :", patch_names[i])
@@ -162,13 +165,19 @@ spmm.plot2 <- function(projections, ylabs = NA, xlabs = NA,
     starts <- seq(1, dim(projections)[1], by = n_patches)
     ends <- c(starts - 1, dim(projections)[1])[-1]
     # throw error if starts and ends != lengths()
-    for (i in 1:length(starts)) {
+    for (i in seq_along(starts)) {
+      idx <- starts[i]:ends[i]
+      if (ylim_max == "stage") {
+        ylim_vals <- c(0, round(max(projections[idx, , drop = FALSE]) + 1, -1))
+      } else {
+        ylim_vals <- c(0, round(max(projections) + 1, -1))
+      }
       graphics::matplot(
-        t(projections)[, c(starts[i]:ends[i])],
+        t(projections)[, idx],
         type = 'b',
         pch = 16,
         # col = c("black", "black"),
-        ylim = c(0, round(max(projections) +1 , -1)),
+        ylim = ylim_vals,
         ylab = ylabs,
         xlab = xlabs,
         main = paste("Stage :", stage_names[i])
@@ -236,7 +245,7 @@ spmm.project.matrix <- function(P, BB, MM, grouping = c("patches", "stages"),
 spmm.project2 <-
   function(n, A, n_timesteps,
            n_stages, n_patches, 
-           ddf = NA, mod_mort = NA, 
+           ddf = NULL, mod_mort = NA, 
            mod_rec = NA, mod_move = NA,
            P, BB, MM) {
     
@@ -253,7 +262,7 @@ spmm.project2 <-
       stop("Structure of n and A are not the same; both should include either 'patches' or 'stages'.")
     )
     
-    # LH ORDER: patches - demo -
+    # LH ORDER: patches - demo 
     if (lh_order == "patches demo") {
       mat <- matrix(nrow = n_stages * n_patches, ncol = n_timesteps)
       tryCatch({
@@ -335,34 +344,31 @@ spmm.project2 <-
                                  grouping = grouping,
                                  lh_order = A_lh_order)
       }
-      ## Density-dependence
+      
       for (t in 2:n_timesteps) {
-        if (!is.na(ddf)){
+        if (!is.null(ddf)) {
           matlist <- unblk.diag(BB, n_stages)
           for (i in seq_along(matlist)) {
             B <- matlist[i]
-            if (ddf$f_type == "Ricker") {
-              B[[1]][1, ] <- dd.rec.Ricker(mat[, t - 1], ddf$a[i], ddf$b[i], theta)
-            } 
-            if (ddf$f_type == "Beverton-Holt") {
-              B[[1]][1, ] <- dd.rec.BevertonHolt(mat[, t - 1], ddf$a[i], ddf$b[i], theta)
-            }
-            if (ddf$s_type == "logistic") {
-              B[[1]][1, ] <- dd.surv.logistic(mat[, t - 1], ddf$r[i], ddf$K[i])
-            }
-            if (ddf$s_type == "ddExponential") {
-              B[[1]][1, ] <- dd.surv.exponential(mat[, t - 1], ddf$r[i], ddf$K[i])
-            }
+            idx <- ((i - 1) * n_stages + 1):(i * n_stages)
+            Ni <- mat[idx, t - 1]
+            B[[1]][1, ] <- dd.growth.logistic(N = Ni, B = B[[1]][1, ], K = ddf$K[i],
+                                              beta = ddf$beta, theta = ddf$theta)
+            matlist[i] <- B
           }
           BB <- blk.diag(matlist)
           A <- spmm.project.matrix(P = P, BB = BB, MM = MM, 
                                    grouping = grouping, lh_order = A_lh_order)
         }
-        ## Projection
-        if (all(mat[, t - 1]%%1==0)) {
+        if (anyNA(mat[, t - 1])) {
+          warning(paste("NA detected at timestep", t - 1))
+          print(which(is.na(mat[, t - 1])))
+        }
+        
+        if (all(mat[, t - 1] %% 1 == 0)) {
           mat[, t] <- floor(as.vector(A %*% mat[, t - 1]))
         } else {
-          mat[, t] <- as.vector(A %*% mat[, t - 1]) 
+          mat[, t] <- as.vector(A %*% mat[, t - 1])
         }
       }
       if (!is.null(rownames(n))) {
@@ -370,7 +376,7 @@ spmm.project2 <-
       }
       colnames(mat) <- paste(1:n_timesteps)
       
-      # LH ORDER: patches - move -
+      # LH ORDER: patches - move 
     } else if (lh_order == "patches move") {
       mat <- matrix(nrow = n_stages * n_patches, ncol = n_timesteps)
       tryCatch({
@@ -452,33 +458,31 @@ spmm.project2 <-
                                  grouping = grouping,
                                  lh_order = A_lh_order)
       }
-      ## Density-dependence      
+      
       for (t in 2:n_timesteps) {
-        if (!is.na(ddf)){
+        if (!is.null(ddf)) {
           matlist <- unblk.diag(BB, n_stages)
           for (i in seq_along(matlist)) {
             B <- matlist[i]
-            if (ddf$f_type == "Ricker") {
-              a <- B[[1]][1, ]
-              B[[1]][1, ] <- dd.rec.Ricker(mat[, t - 1], a, b)
-            } 
-            if (ddf$f_type == "Beverton-Holt") {
-              B[[1]][1, ] <- B[[1]][1, ] * dd.rec.BevertonHolt(mat[, t - 1], ddf$r[i], ddf$K[i])
-            }
-            if (ddf$s_type == "logistic") {
-              B[[1]][-1, ] <- B[[1]][-1, ] * dd.surv.logistic(mat[, t - 1], ddf$r[i], ddf$K[i])
-            }
+            idx <- ((i - 1) * n_stages + 1):(i * n_stages)
+            Ni <- mat[idx, t - 1]
+            B[[1]][1, ] <- dd.growth.logistic(N = Ni, B = B[[1]][1, ], K = ddf$K[i],
+                                              beta = ddf$beta, theta = ddf$theta)
             matlist[i] <- B
           }
           BB <- blk.diag(matlist)
-          A <- spmm.project.matrix(P = P, BB = BB, MM = MM,
+          A <- spmm.project.matrix(P = P, BB = BB, MM = MM, 
                                    grouping = grouping, lh_order = A_lh_order)
         }
-        ## Projection
-        if (all(mat[, t - 1]%%1==0)) {
+        if (anyNA(mat[, t - 1])) {
+          warning(paste("NA detected at timestep", t - 1))
+          print(which(is.na(mat[, t - 1])))
+        }
+        
+        if (all(mat[, t - 1] %% 1 == 0)) {
           mat[, t] <- floor(as.vector(A %*% mat[, t - 1]))
         } else {
-          mat[, t] <- as.vector(A %*% mat[, t - 1]) 
+          mat[, t] <- as.vector(A %*% mat[, t - 1])
         }
       }
       if (!is.null(rownames(n))) {
@@ -568,32 +572,31 @@ spmm.project2 <-
                                  grouping = grouping,
                                  lh_order = A_lh_order)
       }
-      ## Density-dependence      
+      
       for (t in 2:n_timesteps) {
-        if (!is.na(ddf)){
+        if (!is.null(ddf)) {
           matlist <- unblk.diag(BB, n_stages)
           for (i in seq_along(matlist)) {
             B <- matlist[i]
-            if (ddf$f_type == "Ricker") {
-              B[[1]][1, ] <- B[[1]][1, ] * dd.rec.Ricker(mat[, t - 1], ddf$r[i], ddf$K[i])
-            } 
-            if (ddf$f_type == "Beverton-Holt") {
-              B[[1]][1, ] <- B[[1]][1, ] * dd.rec.BevertonHolt(mat[, t - 1], ddf$r[i], ddf$K[i])
-            }
-            if (ddf$s_type == "logistic") {
-              B[[1]][-1, ] <- B[[1]][-1, ] * dd.surv.logistic(mat[, t - 1], ddf$r[i], ddf$K[i])
-            }
+            idx <- ((i - 1) * n_stages + 1):(i * n_stages)
+            Ni <- mat[idx, t - 1]
+            B[[1]][1, ] <- dd.growth.logistic(N = Ni, B = B[[1]][1, ], K = ddf$K[i],
+                                              beta = ddf$beta, theta = ddf$theta)
             matlist[i] <- B
           }
           BB <- blk.diag(matlist)
           A <- spmm.project.matrix(P = P, BB = BB, MM = MM, 
                                    grouping = grouping, lh_order = A_lh_order)
         }
-        ## Projection
-        if (all(mat[, t - 1]%%1==0)) {
+        if (anyNA(mat[, t - 1])) {
+          warning(paste("NA detected at timestep", t - 1))
+          print(which(is.na(mat[, t - 1])))
+        }
+        
+        if (all(mat[, t - 1] %% 1 == 0)) {
           mat[, t] <- floor(as.vector(A %*% mat[, t - 1]))
         } else {
-          mat[, t] <- as.vector(A %*% mat[, t - 1]) 
+          mat[, t] <- as.vector(A %*% mat[, t - 1])
         }
       }
       if (!is.null(rownames(n))) {
@@ -601,7 +604,7 @@ spmm.project2 <-
       }
       colnames(mat) <- paste(1:n_timesteps)
       
-      #LH ORDER: stages - move -
+      # LH ORDER: stages - move 
     } else if (lh_order == "stages move") {
       mat <- matrix(nrow = n_patches * n_stages, ncol = n_timesteps)
       tryCatch({
@@ -683,32 +686,31 @@ spmm.project2 <-
                                  grouping = grouping,
                                  lh_order = A_lh_order)
       }
-      ## Density-dependence      
+      
       for (t in 2:n_timesteps) {
-        if (!is.na(ddf)){
+        if (!is.null(ddf)) {
           matlist <- unblk.diag(BB, n_stages)
           for (i in seq_along(matlist)) {
             B <- matlist[i]
-            if (ddf$f_type == "Ricker") {
-              B[[1]][1, ] <- B[[1]][1, ] * dd.rec.Ricker(mat[, t - 1], ddf$r[i], ddf$K[i])
-            } 
-            if (ddf$f_type == "Beverton-Holt") {
-              B[[1]][1, ] <- B[[1]][1, ] * dd.rec.BevertonHolt(mat[, t - 1], ddf$r[i], ddf$K[i])
-            }
-            if (ddf$s_type == "logistic") {
-              B[[1]][-1, ] <- B[[1]][-1, ] * dd.surv.logistic(mat[, t - 1], ddf$r[i], ddf$K[i])
-            }
+            idx <- ((i - 1) * n_stages + 1):(i * n_stages)
+            Ni <- mat[idx, t - 1]
+            B[[1]][1, ] <- dd.growth.logistic(N = Ni, B = B[[1]][1, ], K = ddf$K[i],
+                                              beta = ddf$beta, theta = ddf$theta)
             matlist[i] <- B
           }
           BB <- blk.diag(matlist)
           A <- spmm.project.matrix(P = P, BB = BB, MM = MM, 
                                    grouping = grouping, lh_order = A_lh_order)
         }
-        ## Projection
-        if (all(mat[, t - 1]%%1==0)) {
+        if (anyNA(mat[, t - 1])) {
+          warning(paste("NA detected at timestep", t - 1))
+          print(which(is.na(mat[, t - 1])))
+        }
+        
+        if (all(mat[, t - 1] %% 1 == 0)) {
           mat[, t] <- floor(as.vector(A %*% mat[, t - 1]))
         } else {
-          mat[, t] <- as.vector(A %*% mat[, t - 1]) 
+          mat[, t] <- as.vector(A %*% mat[, t - 1])
         }
       }
       if (!is.null(rownames(n))) {
@@ -804,6 +806,11 @@ find_knee_point <- function(x, y) {
 #### Data ####
 filename <- "LMRARW-ICPMM-AR-Demo.xlsm"
 (carp_dat <- metapopbio::spmm.readxl("", filename))
+
+filename2 <- "nid-info.xlsx"
+nid_info <- read.xlsx(filename2)
+
+K <- nid_info$K
 
 ## Assign objects from list
 c(n_stages, n_patches, grouping, lh_order, n_timesteps,
@@ -923,13 +930,13 @@ for(i in 1:length(strategy_names$harv)){
                                 grouping = grouping, #change to grouping
                                 lh_order = lh_order)
   
-  
-  projs[[i]] <- spmm.project2(
+  projs[[i]] <- spmm.project(
     n = n,  # number of stage/age animals in patch i
     A = A[[i]],
     BB = BB,
     MM = MMs[[strategy_names$deter[i]]],
     P = P,
+    ddf = list(K = K, beta = 0.2, theta = 1.1),
     n_timesteps = n_timesteps,
     n_stages = n_stages,
     n_patches = n_patches, 
@@ -946,7 +953,6 @@ calculate.cost <- function(harvest_mortality) {
   return(cost)
 }
 
-##### To do: add deterant costs ####
 harv_vals <- seq(0,0.2,0.05)
 deter_nums <-  c(0, 1, 2, 1, 2, 2, 3,4)
 
@@ -966,9 +972,9 @@ ui <- navbarPage(
   tabPanel("Introduction",
            fluidPage(
              h2("Invasive Carp Management App"),
-             p("This app allows you to explore how different harvest and deterrent levels affect carp relative abundance across 'patches' in the Lower Mississippi River/Arkansas Red-White Rivers"),
+             p("This app allows you to explore how different harvest and deterrent levels affect carp relative biomass across 'patches' in the Lower Mississippi River/Arkansas Red-White Rivers"),
              p("Navigate to the 'Management Strategies' tab to explore harvest and deterrent strategies"),
-             p("Navigate to the 'Navigate Tradeoffs' tab to examine tradeoffs between final population abudnance and cost across different management strategies"),
+             p("Navigate to the 'Navigate Tradeoffs' tab to examine tradeoffs between final biomass abudnance and cost across different management strategies"),
              tags$hr(),
              tags$div(
                tags$h4("Map of a subset of 'patches' in the Arkansas River", style = "text-align: center;"),
@@ -1055,10 +1061,10 @@ ui <- navbarPage(
            fluidPage(
              p("Here we are identifying tradeoffs between management outcomes and management costs."),
              p("To analyze this tradeoff, first select your desired harvest level which will appear as the purple point in the plot.
-             Then, you can identify your population constraint - referring to your maximum desirable population size, and also select 
+             Then, you can identify your biomass constraint - referring to your maximum desirable biomass size, and also select 
                your cost constraint - referring to your maximum budget."),
-             p("The resulting plot shows all management strategies with discarded strategies shown in gray (i.e., it has greater population and/or cost than your constraints), 
-             your selected strategy in purple, and the optimal strategy that does best in having both low population and management cost (i.e., the knee point). 
+             p("The resulting plot shows all management strategies with discarded strategies shown in gray (i.e., it has greater biomass and/or cost than your constraints), 
+             your selected strategy in purple, and the optimal strategy that does best in having both low biomass and management cost (i.e., the knee point). 
                The specific outcomes for the optimal and selected strategies are shown in text on the top right portion of the plot."),
             
              tags$hr(),
@@ -1072,16 +1078,22 @@ ui <- navbarPage(
                       helpText("Select desired harvest level and popualtion and cost constraints"),
                       
                       sliderInput(
-                        "harvs",
-                        label = "Selected harvest level:",
+                        "harv",
+                        label = "Harvest level:",
                         min = 0, 
-                        max = 1, 
+                        max = 0.2, 
                         value = 0,
                         step = 0.05
                       ),
+                      selectInput(
+                        "deter",
+                        label = "Deterrent action:",
+                        choices = deter_names,
+                        selected = deter_names[1]
+                      ),
                       sliderInput(
                         "maxpop",
-                        label = "Population constraint:",
+                        label = "Biomass constraint:",
                         min = 0, 
                         max = 90000, 
                         value = 25000,
@@ -1146,7 +1158,7 @@ server <- function(input, output) {
     #Display summary:
     
     HTML(paste0(
-      "<b> Total final relative abundance across all patches: <b>",
+      "<b> Total final relative biomass across all patches: <b>",
       format(sum(projs_select[, n_timesteps]), big.mark = ","), "<br>",
       "Total relative cost: $", format(cost_select, big.mark = ",", scientific = FALSE)
     ))
@@ -1204,9 +1216,9 @@ server <- function(input, output) {
     
     
     HTML(paste0(
-      "<b> Final relative abundance summary</b><br>",
+      "<b> Final relative biomass summary</b><br>",
       "Patch selected: ", input$patch, "<br>",
-      "Total population: ", format(sum(subset[1:2, n_timesteps]), big.mark = ","), "<br>",
+      "Total biomass: ", format(sum(subset[1:2, n_timesteps]), big.mark = ","), "<br>",
       "Number of juveniles: ", format(subset[1, n_timesteps], big.mark = ","), "<br>",
       "Number of adults: ", format(subset[2, n_timesteps], big.mark = ","), "<br>"
     ))
@@ -1254,7 +1266,7 @@ server <- function(input, output) {
         name = NULL
       ) +
       theme_bw() +   
-      ylab("Relative Abundance") +
+      ylab("Relative Biomass") +
       xlab("Years")+
       theme(strip.background=element_rect(colour="white",
                                           fill="white"),
@@ -1270,109 +1282,7 @@ server <- function(input, output) {
   ###### Pareto Plot #####
   output$ParetoPlot <- renderPlot({
     
-    filename <- "LMRARW-ICPMM-AR-Demo.xlsm"
-    (carp_dat <- metapopbio::spmm.readxl("", filename))
-    c(n_stages, n_patches, grouping, lh_order, n_timesteps,
-      stage_names, patch_names, n, matrices, MM, BB) %<-% carp_dat
-    
-    #1. creating the vec-permutation matrix (dimension = stages*patches x stages*patches)
-    P <- vec.perm(n_stages = n_stages,
-                  n_patches = n_patches,
-                  grouping = grouping)
-    
-    #2. Create projection matrix
-    A <- spmm.project.matrix(P, #vec-permutation matrix,
-                             BB, #block diagonal matrix for demographic paramters 
-                             MM, #block diagonal for movement paramters
-                             grouping = grouping, #grouping projections (by patches here)
-                             lh_order = lh_order) #order of events (demographic before movement here)
-    
-    
-    harvest <- seq(0,1,0.05)
-    dets <- c(0)
-    strategies_outcomes <- expand.grid(harvest,dets)
-    colnames(strategies_outcomes) <- c('H', 'D')
-    strategies_outcomes$TotalN <- NA
-    strategies_outcomes$Cost <- NA
-    
-    for(i in 1:length(strategies_outcomes$H)){
-      temp <- spmm.project2(n = n,  # number of stage/age animals in patch i
-                            A = A,
-                            BB = BB,
-                            MM = MM,
-                            P = P,
-                            n_timesteps = n_timesteps,
-                            n_stages = n_stages,
-                            n_patches = n_patches, 
-                            mod_mort = strategies_outcomes$H[i]
-      ) 
-      
-      strategies_outcomes$TotalN[i] <- sum(temp[,n_timesteps])
-      strategies_outcomes$Cost[i] <- calculate.cost(strategies_outcomes$H[i])
-      
-    }
-    
-    KP <- find_knee_point(strategies_outcomes$Cost, strategies_outcomes$TotalN)
-    
-    select <- which(as.factor(strategies_outcomes$H) == input$harvs)
-    maxpop <- input$maxpop
-    maxcost <- input$maxcost* 1e6
-    
-    strategies_outcomes$Strategy <- NA
-    
-    
-    strategies_outcomes$Strategy[KP] <- 'Optimal Strategy'
-    subop <- which(strategies_outcomes$Cost > maxcost | strategies_outcomes$TotalN > maxpop)
-    strategies_outcomes$Strategy[subop] <- 'Discarded Strategy'
-    strategies_outcomes$Strategy[c(-KP, -(select), -subop)] <- 'Potential Strategy'
-    strategies_outcomes$Strategy[select] <- 'Selected Strategy'
-    
-    
-    optimal_text <- strategies_outcomes %>% 
-      filter(Strategy %in% c('Optimal Strategy'))
-    
-    optimal_text <-  paste0("Abundance: ",
-      format(optimal_text$TotalN, big.mark = ","), 
-      " & Cost: $", format(ceiling(optimal_text$Cost/1e6), big.mark = ",", scientific = FALSE),
-      "M (harvest = ", optimal_text$H, ")"
-    )
-    
-    selected_text <- strategies_outcomes %>% 
-      filter(Strategy %in% c('Selected Strategy'))
-    
-    selected_text <-  paste0("Abundance: ",
-                            format(selected_text$TotalN, big.mark = ","), 
-                            " & Cost: $", format(ceiling(selected_text$Cost/1e6), big.mark = ",", scientific = FALSE),
-                            "M (harvest = ", selected_text$H, ")"
-    )
-    
-    
-    colors <- c('azure4', 'forestgreen', 'lightskyblue1', 'blueviolet')
-    
-    ggplot(strategies_outcomes)+
-      geom_point(aes(x = Cost, y = TotalN, fill = Strategy), shape = 21, size = 5)+
-      theme_bw() +   
-      ylab("Final total relative population across all patches") +
-      xlab("Relative management cost ($)")+
-      geom_hline(yintercept = maxpop, linetype = 'dashed')+
-      geom_vline(xintercept = maxcost, linetype = 'dashed')+
-      geom_text(aes(label = optimal_text, 
-                                         x = 1000000000, y = 47500),
-                color = 'forestgreen')+
-      geom_text(aes(label = selected_text,
-                    x = 1000000000, y = 45500),
-                color = 'blueviolet') +
-      scale_fill_manual(values = colors)+
-      scale_x_continuous(labels = unit_format(unit = "M", scale = 1e-6))+
-      theme(strip.background=element_rect(colour="white",
-                                          fill="white"),
-            strip.text.x = element_text(hjust = 0, margin=margin(l=0)),
-            panel.border = element_rect(colour = "gray", size = 1.5), 
-            panel.grid.major = element_blank(),
-            panel.grid.minor = element_blank(),
-            axis.ticks = element_blank(),
-            text = element_text(size = 15)
-      )
+   #### TO DO ####
     
   })
   
