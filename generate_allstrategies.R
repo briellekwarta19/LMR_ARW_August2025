@@ -1,5 +1,7 @@
 library("metapopbio")
 library(plyr)
+library(tidyverse)
+library(scales)
 
 #Load data ---------------------------------------------------------------
 path <- here::here()
@@ -123,9 +125,11 @@ for(i in 1:length(strategy_names$harv)){
 }
 
 A <- list()
+BB_harv <- list()
 projs <- list()
 
 for(i in 1:length(strategy_names$harv)){
+  
   A[[i]] <- spmm.project.matrix(P, 
                            BB, 
                            MMs[[strategy_names$deter[i]]], 
@@ -145,6 +149,7 @@ for(i in 1:length(strategy_names$harv)){
     n_patches = n_patches, 
     mod_mort = harv.strategies[i,]
   )
+  
 }
 
 strategy_names[c(2,7),]
@@ -336,6 +341,140 @@ for (i in 1: length(strategy_outcomes_table$`Harvest level`)) {
 kbl
 
 
+#### Sensitivities ####
+patch_nam <- rep(1:n_patches, each = n_stages)
+stage_nam <- rep(c('juvenile', 'adult'), times = n_patches)
 
+mat.names <- matrix(NA, nrow = n_patches*n_stages, ncol = n_patches*n_stages)
+rownames(mat.names) <- patch_nam
+colnames(mat.names) <- stage_nam
+mat.names[seq(1,nrow(mat.names),by = 2),] <- 'fecund'
+mat.names[seq(2,nrow(mat.names),by = 2),] <- 'surv'
+
+mat.id <- matrix(NA, nrow = n_patches*n_stages, ncol = n_patches*n_stages)
+for(i in 1:nrow(mat.id)){
+  for(j in 1:ncol(mat.id)){
+    mat.id[i,j] <- paste0('patch: ', rownames(mat.names)[i], ', rate: ', colnames(mat.names)[j], ' ', mat.names[i,j] )
+  }
+}
+
+patch_nam2r <- patch_nam2c <- rep(1:n_patches, 2)
+mat.names2 <- matrix(NA, nrow = n_patches*n_stages, ncol = n_patches*n_stages)
+rownames(mat.names2) <- patch_nam2r
+colnames(mat.names2) <- patch_nam2c
+
+mat.id2 <- matrix(NA, nrow = n_patches*n_stages, ncol = n_patches*n_stages)
+for(r in 1:n_patches){
+  for(c in 1:n_patches){
+    mat.id2[r,c] <- paste0('from patch ', colnames(mat.names2)[c], ', to patch ', rownames(mat.names2)[r], ', stage: ', 'Juvenile' )
+  }
+}
+
+for(r in (n_patches+1):ncol(mat.id2)){
+  for(c in (n_patches+1):ncol(mat.id2)){
+    mat.id2[r,c] <- paste0('from patch ', colnames(mat.names2)[c], ', to patch ', rownames(mat.names2)[r], ', stage: ', 'Adult' )
+  }
+}
+
+BB_harv <- A_harv <- list()
+testM <- testB <- rep(NA, length(strategy_names$harv))
+BB_e <- top5_BB <-top5_BB_indices <- top5_BB_df <- list()
+MM_e <- top5_MM <-top5_MM_indices <- top5_MM_df <- list()
+
+
+for(i in 1:length(strategy_names$harv)){ 
+  harv_mat <- unblk.diag(BB, n_stages)
+  
+  for (p in 1:10) {
+    B <- harv_mat[p]
+    
+    M <- -log(B[[1]][-1, ])  
+    M <- M + harv.strategies[i,1] #This will be adjusted per strategy
+    
+    B[[1]][-1, ] <- exp(-M)
+    harv_mat[p] <- B
+  }
+  
+  BB_harv[[i]] <- blk.diag(harv_mat)
+  
+  A_harv[[i]] <- spmm.project.matrix(P, #vec-permutation matrix,
+                                BB = BB_harv[[i]], #block diagonal matrix for demographic paramters 
+                                MM =  MMs[[strategy_names$deter[i]]], #block diagonal for movement paramters
+                                group_by = group_by, #grouping projections (by patches here)
+                                lh_order = lh_order) #order of events (demographic before movement here)
+  
+  #extracting elasticities for this strategy
+  BB_e[[i]] <- spmm.demo.elas(BB_harv[[i]],A_harv[[i]],P, MMs[[strategy_names$deter[i]]])
+  
+  testB[i] <- sum(BB_e[[i]])
+  
+  #extracting location of top 5 rates
+  top5_BB[[i]] <- order(BB_e[[i]], decreasing = TRUE)[1:5]
+  #extracting indices of those rates
+  top5_BB_indices[[i]] <- arrayInd(top5_BB[[i]], .dim = dim(BB_e[[i]]))
+  #now combine into a dataframe which matches with the rate name:
+  top5_BB_df[[i]] <- data.frame(rate = mat.id[top5_BB_indices[[i]]], value = BB_e[[i]][top5_BB[[i]]])
+  top5_BB_df[[i]]$type <- i
+ 
+  
+  #do the same for MM
+  MM_e[[i]] <- spmm.move.elas( MMs[[strategy_names$deter[i]]], A_harv[[i]], P, BB_harv[[i]])
+  
+  testM[i] <- sum(MM_e[[i]])
+  
+  #extracting location of top 5 rates
+  top5_MM[[i]] <- order(MM_e[[i]], decreasing = TRUE)[1:5]
+  #extracting indices of those rates
+  top5_MM_indices[[i]] <- arrayInd(top5_MM[[i]], .dim = dim(MM_e[[i]]))
+  #now combine into a dataframe which matches with the rate name:
+  top5_MM_df[[i]] <- data.frame(rate = mat.id2[top5_MM_indices[[i]]], value = MM_e[[i]][top5_MM[[i]]])
+  top5_MM_df[[i]]$type <- i
+   
+}
+
+
+#combine top5 dataframes
+select <- 3
+top5_bb <- rbind(top5_BB_df[[1]], top5_BB_df[[select]])
+
+# Order from base
+ordered_rates <- top5_bb %>%
+  filter(type == 1) %>%
+  arrange(value) %>%
+  pull(rate)
+top5_bb$rate <- factor(top5_bb$rate, levels = ordered_rates)
+
+top5_bb$type <- ifelse(top5_bb$type == 1, 'Base model', 'Management Strategy')
+
+# Plot
+ggplot(top5_bb, aes(x = value, y = rate, fill = type)) +
+  geom_col(position = "dodge") +
+  ggtitle("BB elasticities") +
+  labs(x = "Elasticity", y = "Rate") +
+  theme_minimal()
+
+#Question: should BB_e_harv equal BB_e_base??
+all.equal(BB_e_harv, BB_e_base)
+
+
+#combine top5 dataframes
+select <- 3
+top5_mm <- rbind(top5_MM_df[[1]], top5_MM_df[[select]])
+
+# Order from base
+ordered_rates <- top5_mm %>%
+  filter(type == 1) %>%
+  arrange(value) %>%
+  pull(rate)
+top5_mm$rate <- factor(top5_mm$rate, levels = ordered_rates)
+
+top5_mm$type <- ifelse(top5_mm$type == 1, 'Base model', 'Management Strategy')
+
+# Plot
+ggplot(top5_mm, aes(x = value, y = rate, fill = type)) +
+  geom_col(position = "dodge") +
+  ggtitle("MM elasticities") +
+  labs(x = "Elasticity", y = "Rate") +
+  theme_minimal()
 
 

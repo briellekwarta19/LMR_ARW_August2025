@@ -6,9 +6,10 @@ library(tidyverse)
 library(scales)
 library(plyr)
 library(ggrepel)
+library(rPref)
+library(knitr)
+library(kableExtra)
 
-#### to do: 
-#add deterrents
 
 #-----------------------------------------------#
 #### Functions ####
@@ -964,6 +965,7 @@ strategy_cost <- strategy_cost %>% mutate(
 
 strategy_cost$cost <- ceiling(strategy_cost$cost)
 
+
 # #### UI ####
 ui <- navbarPage(
   title = "LMR-ARW-iCARP",
@@ -974,7 +976,8 @@ ui <- navbarPage(
              h2("Invasive Carp Management App"),
              p("This app allows you to explore how different harvest and deterrent levels affect carp relative biomass across 'patches' in the Lower Mississippi River/Arkansas Red-White Rivers"),
              p("Navigate to the 'Management Strategies' tab to explore harvest and deterrent strategies"),
-             p("Navigate to the 'Navigate Tradeoffs' tab to examine tradeoffs between final biomass abudnance and cost across different management strategies"),
+             p("Navigate to the 'Navigate Tradeoffs' tab to examine tradeoffs between final biomass abundance and cost across different management strategies (via Pareto efficiency analysis)"),
+             p("Navigate to the 'Sensitivity Analysis' tab to explore elasticity values of key demographic and movement parameters"),
              tags$hr(),
              tags$div(
                tags$h4("Map of a subset of 'patches' in the Arkansas River", style = "text-align: center;"),
@@ -994,7 +997,8 @@ ui <- navbarPage(
              column(
                width = 3,
                wellPanel(
-                 helpText("Select different harvest and deterrent levels below and the 'Single Patch' panel to see outcomes for a specific patch and navigate to the 'All Patches' panel to see results across all locations"),
+                 helpText("Select different harvest and deterrent levels below. Select the 'All Patches' panel to see results across all locations
+                          and select the 'Single Patch' panel to see outcomes for a specific patch"),
                  sliderInput(
                    "harv",
                    label = "Harvest level:",
@@ -1021,33 +1025,33 @@ ui <- navbarPage(
                  uiOutput("Patch", style = "padding-top: 10px; font-weight: bold;font-size: 22px;"),
                  
                  tabsetPanel(
-                   tabPanel("Single Patch",
-                            fluidPage(
-                              selectInput(
-                                "patch",
-                                label = "Choose a patch to display",
-                                choices = patch_names,
-                                selected = patch_names[1]
-                              ),
-                              fluidRow(
-                                column(
-                                  width = 8,
-                                  plotOutput("Plot", height = "400px", width = "100%")
-                                ),
-                                column(
-                                  width = 4,
-                                  uiOutput("FinalPop", style = "padding-top: 20px;")
-                                )
-                              )
-                            )
-                   ),
                    tabPanel("All Patches",
                             fluidPage(
-                              tags$img(src = "VectorStudyArea.png", height = "500px", width = "100%"),
+                              tags$img(src = "VectorStudyArea.png", height = "400px", width = "100%"),
                               br(), 
                               plotOutput("AllPlot", height = "400px", width = "100%")
                             )
-                   )
+                   ),
+                    tabPanel("Single Patch",
+                             fluidPage(
+                               selectInput(
+                                 "patch",
+                                 label = "Choose a patch to display",
+                                 choices = patch_names,
+                                 selected = patch_names[1]
+                               ),
+                               fluidRow(
+                                 column(
+                                   width = 8,
+                                   plotOutput("Plot", height = "400px", width = "100%")
+                                 ),
+                                 column(
+                                   width = 4,
+                                   uiOutput("FinalPop", style = "padding-top: 20px;")
+                                 )
+                               )
+                             )
+                    )
                )
              )
            )
@@ -1059,18 +1063,17 @@ ui <- navbarPage(
   #Navigate Tradeoffs
   tabPanel("Navigate Tradeoffs",
            fluidPage(
-             p("Here we are identifying tradeoffs between management outcomes and management costs."),
-             p("To analyze this tradeoff, first select your desired harvest level which will appear as the purple point in the plot.
-             Then, you can identify your biomass constraint - referring to your maximum desirable biomass size, and also select 
-               your cost constraint - referring to your maximum budget."),
-             p("The resulting plot shows all management strategies with discarded strategies shown in gray (i.e., it has greater biomass and/or cost than your constraints), 
-             your selected strategy in purple, and the optimal strategy that does best in having both low biomass and management cost (i.e., the knee point). 
-               The specific outcomes for the optimal and selected strategies are shown in text on the top right portion of the plot."),
-            
+             p("Here we identify tradeoffs between two objectives: low biomass and low management cost."),
+             p("To visualize this tradeoff, first select your desired strategy (the combination of harvest level and deterrant strategy) which will appear as a filled in point in the plot."),
+             p("Then, you can identify your biomass constraint - referring to your maximum acceptable biomass size, and your cost constraint - referring to your maximum budget."),
+             p("The resulting plot shows all management strategies. The color of the points indicate 'Strategy Type' with Discarded Strategies shown in gray (i.e., it has greater biomass and/or cost than your constraints), 
+             Efficient Strategoes are in green (i.e., Pareto efficient strategies, indicating that an improvement in one objective cannot be made without worsening the other), and Dominated Strategies points are in blue (i.e., Pareto ineficient strategies,
+             indicating that there is another strategy that is a least as good in one objective and better in another)"),
+             p("Ideal strategies are the Efficient Strategies (i.e., the Pareto front)"),
+             p("See the table below where we display the biomass and cost outcomes for the Efficient Strategies and your Selected Strategy."),
+             
              tags$hr(),
              
-             tabsetPanel(
-               tabPanel("Collective Strategies",
                 fluidRow(
                   column(
                     width = 3,  # Narrower sidebar
@@ -1078,7 +1081,7 @@ ui <- navbarPage(
                       helpText("Select desired harvest level and popualtion and cost constraints"),
                       
                       sliderInput(
-                        "harv",
+                        "H",
                         label = "Harvest level:",
                         min = 0, 
                         max = 0.2, 
@@ -1086,26 +1089,26 @@ ui <- navbarPage(
                         step = 0.05
                       ),
                       selectInput(
-                        "deter",
+                        "D",
                         label = "Deterrent action:",
                         choices = deter_names,
                         selected = deter_names[1]
                       ),
                       sliderInput(
-                        "maxpop",
-                        label = "Biomass constraint:",
-                        min = 0, 
-                        max = 90000, 
-                        value = 25000,
-                        step = 1000
+                        "maxbio",
+                        label = "Biomass constraint (in trillions):",
+                        min = 7, 
+                        max = 15, 
+                        value = 15,
+                        step = 1
                       ),
                       sliderInput(
                         "maxcost",
                         label = "Cost constraint (in millions):",
                         min = 0, 
-                        max = 1000,  # Represent millions
-                        value = 500,
-                        step = 5
+                        max = 3.5,  # Represent millions
+                        value = 3,
+                        step = 0.25
                       )
                     )
                   ),
@@ -1114,12 +1117,12 @@ ui <- navbarPage(
                     fluidRow(
                       column(
                         width = 9,
-                        plotOutput("ParetoPlot", height = "400px", width = "100%")
+                        plotOutput("ParetoPlot", height = "400px", width = "100%"),
+                        br(),
+                        htmlOutput("ParetoTable", width = '150%')
+                        )
                       )
-                    )
                   )
-             )
-           )
       )
     )
   
@@ -1282,10 +1285,170 @@ server <- function(input, output) {
   ###### Pareto Plot #####
   output$ParetoPlot <- renderPlot({
     
-   #### TO DO ####
+    final_bio <- final_dist <- rep(NA, length(projs))
+    
+    for(i in 1:length(projs)){
+      projs_select <- projs[[i]]
+      final_bio[i] <- sum(projs_select[, n_timesteps])
+      
+      summed_bio <- projs_select[seq(1, nrow(projs_select), by = 2), ] + projs_select[seq(2, nrow(projs_select), by = 2), ]
+      final_dist[i] <- sum(summed_bio[,n_timesteps] >= 0)
+    }
+    
+    strategy_outcomes <- strategy_cost
+    colnames(strategy_outcomes)[2] <- 'deter'
+    
+    strategy_outcomes$deter <- deter_names[strategy_names$deter]
+    strategy_outcomes$biomass <- final_bio #final population
+    
+    
+    if(input$H == 0.15){
+      select <- which(strategy_names$harv == '0.15' & 
+                        strategy_names$deter == which(deter_names == input$D))
+    }else{
+      select <- which(strategy_names$harv == input$H & 
+                        strategy_names$deter == which(deter_names == input$D))
+    }
+    
+    
+    maxbio <- input$maxbio * 1e12
+    maxcost <- input$maxcost* 1e6
+    
+    PO <- psel(strategy_outcomes, low(cost) * low(biomass))
+
+    
+    strategy_outcomes$Strategy <- NA
+    strategy_outcomes$Strategy[as.numeric(rownames(PO))] <- 'Efficient Strategy'
+    subop <- which(strategy_outcomes$cost > maxcost | strategy_outcomes$biomass > maxbio)
+    strategy_outcomes$Strategy[subop] <- 'Discarded Strategy'
+    strategy_outcomes$Strategy[c(-(as.numeric(rownames(PO))), -subop)] <- 'Dominated Strategy'
+    
+    strategy_outcomes$Strategy2 <- 'Not Selected'
+    strategy_outcomes$Strategy2[select] <- 'Selected Strategy'
+    
+    colnames(strategy_outcomes)[5] <- "Strategy Type"
+    colnames(strategy_outcomes)[6] <- "Selected Strategy"
+    
+    if(sum(strategy_outcomes$Strategy == "Discarded Strategy") > 0){
+      colors <- c('azure4', 'lightskyblue', 'darkgreen' ) 
+    }else{
+      colors <- c('lightskyblue', 'darkgreen' )
+    }
+    
+
+    
+    ggplot(strategy_outcomes)+
+      geom_point(aes(x = cost, y = biomass, color = `Strategy Type`, shape = `Selected Strategy`),
+                 size = 4, stroke = 2)+
+      scale_shape_manual(values=c(1, 19))+
+      scale_color_manual(values = colors)+
+      theme_bw() +   
+      ylab("Final biomass across all patches") +
+      ggtitle("Pareto Efficiency Plot")+
+      xlab("Management cost ($)")+
+      geom_hline(yintercept = maxbio, linetype = 'dashed')+
+      geom_vline(xintercept = maxcost, linetype = 'dashed')+
+      scale_y_continuous(labels = unit_format(unit = "T", scale = 1e-12))+
+      scale_x_continuous(labels = unit_format(unit = "M", scale = 1e-6))+
+      theme(strip.background=element_rect(colour="white",
+                                          fill="white"),
+            strip.text.x = element_text(hjust = 0, margin=margin(l=0)),
+            panel.border = element_rect(colour = "gray", size = 1.5), 
+            panel.grid.major = element_blank(),
+            panel.grid.minor = element_blank(),
+            axis.ticks = element_blank(),
+            text = element_text(size = 15)
+      )
     
   })
   
+  ###### Pareto Table ######
+  output$ParetoTable <- renderText({
+    
+    final_bio <- final_dist <- rep(NA, length(projs))
+    
+    for(i in 1:length(projs)){
+      projs_select <- projs[[i]]
+      final_bio[i] <- sum(projs_select[, n_timesteps])
+      
+      summed_bio <- projs_select[seq(1, nrow(projs_select), by = 2), ] + projs_select[seq(2, nrow(projs_select), by = 2), ]
+      final_dist[i] <- sum(summed_bio[,n_timesteps] >= 0)
+    }
+    
+    strategy_outcomes <- strategy_cost
+    colnames(strategy_outcomes)[2] <- 'deter'
+    
+    strategy_outcomes$deter <- deter_names[strategy_names$deter]
+    strategy_outcomes$biomass <- final_bio #final population
+    
+    
+    if(input$H == 0.15){
+      select <- which(strategy_names$harv == '0.15' & 
+                        strategy_names$deter == which(deter_names == input$D))
+    }else{
+      select <- which(strategy_names$harv == input$H & 
+                        strategy_names$deter == which(deter_names == input$D))
+    }
+    
+    
+    maxbio <- input$maxbio * 1e12
+    maxcost <- input$maxcost* 1e6
+    
+    PO <- psel(strategy_outcomes, low(cost) * low(biomass))
+    
+    
+    strategy_outcomes$Strategy <- NA
+    strategy_outcomes$Strategy[as.numeric(rownames(PO))] <- 'Efficient Strategy'
+    subop <- which(strategy_outcomes$cost > maxcost | strategy_outcomes$biomass > maxbio)
+    strategy_outcomes$Strategy[subop] <- 'Discarded Strategy'
+    strategy_outcomes$Strategy[c(-(as.numeric(rownames(PO))), -subop)] <- 'Dominated Strategy'
+    
+    strategy_outcomes$Strategy2 <- 'Not Selected'
+    strategy_outcomes$Strategy2[select] <- 'Selected Strategy'
+    
+    colnames(strategy_outcomes)[5] <- "Strategy Type"
+    colnames(strategy_outcomes)[6] <- "Selected Strategy"
+    
+    if(length(strategy_outcomes$Strategy == "Discarded Strategy") > 0){
+      colors <- c('azure4', 'lightskyblue', 'darkgreen' ) 
+    }else{
+      colors <- c('lightskyblue', 'darkgreen' )
+    }
+    
+    
+    strategy_outcomes_table <- strategy_outcomes %>% filter(`Strategy Type` == 'Efficient Strategy' |
+                                                              `Selected Strategy` == "Selected Strategy")
+    
+    
+    strategy_outcomes_table <- strategy_outcomes_table %>% arrange(`Selected Strategy`)
+    colnames(strategy_outcomes_table) <- c('Harvest level', 'Deterrant action', 
+                                           'Cost', 'Biomass', 'Strategy Type', 'Selected Strategy')
+    
+    strategy_outcomes_table$Cost <- round((strategy_outcomes_table$Cost/ 1e6),2)
+    strategy_outcomes_table$Biomass <- round((strategy_outcomes_table$Biomass/ 1e12),2)
+    colnames(strategy_outcomes_table)[3:4] <- c("Cost (M)", "Biomass (T)")
+    
+    kbl <- kable(strategy_outcomes_table, "html") %>%
+      #kable_classic("striped", full_width = T)
+      kable_styling(full_width = F) %>% 
+      column_spec(1, width_min = "12em")
+    
+    # Apply row coloring based on Category
+    for (i in 1: length(strategy_outcomes_table$`Harvest level`)) {
+      if (strategy_outcomes_table$`Strategy Type`[i] == "Discarded Strategy") {
+        kbl <- kbl %>% row_spec(i, background = colors[1], bold = T)
+      }
+      if (strategy_outcomes_table$`Strategy Type`[i] == "Dominated Strategy") {
+        kbl <- kbl %>% row_spec(i, background = colors[2], bold = T)
+      }
+      if (strategy_outcomes_table$`Strategy Type`[i] == "Efficient Strategy") {
+        kbl <- kbl %>% row_spec(i, background = colors[3], bold = T)
+      }
+    }
+    
+    kbl
+    
+  })
   
 }
 

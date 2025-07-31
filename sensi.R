@@ -82,7 +82,7 @@ for (i in 1:10) {
   B <- harv_mat[i]
   
   M <- -log(B[[1]][-1, ])  
-  M <- M + 0.5 #This will be adjusted per strategy
+  M <- M + 0.1 #This will be adjusted per strategy
   
   B[[1]][-1, ] <- exp(-M)
   harv_mat[i] <- B
@@ -128,5 +128,5 @@ ggplot(top5_bb, aes(x = value, y = rate, fill = type)) +
   theme_minimal()
 
 #Question: should BB_e_harv equal BB_e_base??
-#all.equal(BB_e_harv, BB_e_base)
+all.equal(BB_e_harv, BB_e_base)
 
