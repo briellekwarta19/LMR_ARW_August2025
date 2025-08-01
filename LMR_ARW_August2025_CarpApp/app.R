@@ -1566,15 +1566,6 @@ server <- function(input, output) {
     colnames(strategy_outcomes)[5] <- "Strategy Type"
     colnames(strategy_outcomes)[6] <- "Selected Strategy"
     
-    colors <- c('azure4', 'lightskyblue', 'palegreen3' ) 
-    
-    if(sum(strategy_outcomes$Strategy == "Discarded Strategy") == 0){
-      colors <- c('lightskyblue', 'palegreen3' )
-    }
-    
-    if(sum(strategy_outcomes$Strategy == "Dominated Strategy") == 0){
-      colors <- c('azure4', 'palegreen3' )
-    }
     
     strategy_outcomes_table <- strategy_outcomes %>% filter(`Strategy Type` == 'Efficient Strategy' |
                                                               `Selected Strategy` == "Selected Strategy")
@@ -1588,6 +1579,7 @@ server <- function(input, output) {
     strategy_outcomes_table$Biomass <- round((strategy_outcomes_table$Biomass/ 1e12),2)
     colnames(strategy_outcomes_table)[3:4] <- c("Cost (M)", "Biomass (T)")
     
+    
     kbl <- kable(strategy_outcomes_table, "html") %>%
       #kable_classic("striped", full_width = T)
       kable_styling(full_width = F) %>% 
@@ -1596,13 +1588,13 @@ server <- function(input, output) {
     # Apply row coloring based on Category
     for (i in 1: length(strategy_outcomes_table$`Harvest level`)) {
       if (strategy_outcomes_table$`Strategy Type`[i] == "Discarded Strategy") {
-        kbl <- kbl %>% row_spec(i, background = colors[1], bold = T)
+        kbl <- kbl %>% row_spec(i, background = 'azure4', bold = T)
       }
       if (strategy_outcomes_table$`Strategy Type`[i] == "Dominated Strategy") {
-        kbl <- kbl %>% row_spec(i, background = colors[2], bold = T)
+        kbl <- kbl %>% row_spec(i, background = 'lightskyblue', bold = T)
       }
       if (strategy_outcomes_table$`Strategy Type`[i] == "Efficient Strategy") {
-        kbl <- kbl %>% row_spec(i, background = colors[3], bold = T)
+        kbl <- kbl %>% row_spec(i, background = 'palegreen3', bold = T)
       }
     }
     
