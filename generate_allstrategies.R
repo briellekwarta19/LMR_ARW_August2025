@@ -2,6 +2,7 @@ library("metapopbio")
 library(plyr)
 library(tidyverse)
 library(scales)
+library(gridExtra)
 
 #Load data ---------------------------------------------------------------
 path <- here::here()
@@ -354,7 +355,7 @@ mat.names[seq(2,nrow(mat.names),by = 2),] <- 'surv'
 mat.id <- matrix(NA, nrow = n_patches*n_stages, ncol = n_patches*n_stages)
 for(i in 1:nrow(mat.id)){
   for(j in 1:ncol(mat.id)){
-    mat.id[i,j] <- paste0('patch: ', rownames(mat.names)[i], ', rate: ', colnames(mat.names)[j], ' ', mat.names[i,j] )
+    mat.id[i,j] <- paste0('patch: ', rownames(mat.names)[i], ', value: ', colnames(mat.names)[j], ' ', mat.names[i,j] )
   }
 }
 
@@ -366,13 +367,13 @@ colnames(mat.names2) <- patch_nam2c
 mat.id2 <- matrix(NA, nrow = n_patches*n_stages, ncol = n_patches*n_stages)
 for(r in 1:n_patches){
   for(c in 1:n_patches){
-    mat.id2[r,c] <- paste0('from patch ', colnames(mat.names2)[c], ', to patch ', rownames(mat.names2)[r], ', stage: ', 'Juvenile' )
+    mat.id2[r,c] <- paste0('from patch ', colnames(mat.names2)[c], ', to patch ', rownames(mat.names2)[r], ', stage: ', 'juvenile' )
   }
 }
 
 for(r in (n_patches+1):ncol(mat.id2)){
   for(c in (n_patches+1):ncol(mat.id2)){
-    mat.id2[r,c] <- paste0('from patch ', colnames(mat.names2)[c], ', to patch ', rownames(mat.names2)[r], ', stage: ', 'Adult' )
+    mat.id2[r,c] <- paste0('from patch ', colnames(mat.names2)[c], ', to patch ', rownames(mat.names2)[r], ', stage: ', 'adult' )
   }
 }
 
@@ -444,17 +445,16 @@ ordered_rates <- top5_bb %>%
   pull(rate)
 top5_bb$rate <- factor(top5_bb$rate, levels = ordered_rates)
 
-top5_bb$type <- ifelse(top5_bb$type == 1, 'Base model', 'Management Strategy')
+top5_bb$type <- ifelse(top5_bb$type == 1, 'Base model (no management)', 'Selected strategy')
 
 # Plot
-ggplot(top5_bb, aes(x = value, y = rate, fill = type)) +
-  geom_col(position = "dodge") +
-  ggtitle("BB elasticities") +
-  labs(x = "Elasticity", y = "Rate") +
-  theme_minimal()
-
-#Question: should BB_e_harv equal BB_e_base??
-all.equal(BB_e_harv, BB_e_base)
+p1 <- ggplot(top5_bb, aes(x = value, y = rate, fill = type)) +
+  geom_col(position = "dodge", color = "black") +
+  ggtitle("Demographic elasticities") +
+  scale_fill_manual(values = c("darkslategray", "darkslategray3"))+
+  labs(x = "Elasticity", y = "Demographic probability") +
+  theme_minimal()+
+  theme(legend.position="none")
 
 
 #combine top5 dataframes
@@ -468,13 +468,15 @@ ordered_rates <- top5_mm %>%
   pull(rate)
 top5_mm$rate <- factor(top5_mm$rate, levels = ordered_rates)
 
-top5_mm$type <- ifelse(top5_mm$type == 1, 'Base model', 'Management Strategy')
+top5_mm$type <- ifelse(top5_mm$type == 1, 'Base model (no management)', 'Selected strategy')
 
 # Plot
-ggplot(top5_mm, aes(x = value, y = rate, fill = type)) +
-  geom_col(position = "dodge") +
-  ggtitle("MM elasticities") +
-  labs(x = "Elasticity", y = "Rate") +
+p2 <- ggplot(top5_mm, aes(x = value, y = rate, fill = type)) +
+  geom_col(position = "dodge", color = "black") +
+  ggtitle("Movement elasticities") +
+  scale_fill_manual(values = c("darkslategray", "darkslategray3"))+
+  labs(x = "Elasticity", y = "Movement probability", fill = "") +
   theme_minimal()
 
+grid.arrange(p1, p2, ncol = 2, widths = c(0.75, 1.2))
 

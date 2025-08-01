@@ -9,6 +9,7 @@ library(ggrepel)
 library(rPref)
 library(knitr)
 library(kableExtra)
+library(gridExtra)
 
 
 #-----------------------------------------------#
@@ -775,35 +776,6 @@ calculate.cost <- function(harvest_mortality) {
   return(cost)
 }
 
-find_knee_point <- function(x, y) {
-  # Normalize the data
-  x_norm <- (x - min(x)) / (max(x) - min(x))
-  y_norm <- (y - min(y)) / (max(y) - min(y))
-  
-  # Flip y if needed (to make both increasing)
-  y_norm <- 1 - y_norm
-  
-  # Line from first to last point
-  line_vec <- c(x_norm[length(x_norm)] - x_norm[1], y_norm[length(y_norm)] - y_norm[1])
-  line_vec <- line_vec / sqrt(sum(line_vec^2))
-  
-  # Compute distances
-  distances <- sapply(1:length(x_norm), function(i) {
-    point_vec <- c(x_norm[i] - x_norm[1], y_norm[i] - y_norm[1])
-    proj_len <- sum(point_vec * line_vec)
-    proj_point <- line_vec * proj_len
-    perp_vec <- point_vec - proj_point
-    sqrt(sum(perp_vec^2))
-  })
-  
-  
-  # Find index of max distance
-  knee_index <- which.max(distances)
-  return(knee_index)
-  
-  
-}
-
 #### Data ####
 filename <- "LMRARW-ICPMM-AR-Demo.xlsm"
 (carp_dat <- metapopbio::spmm.readxl("", filename))
@@ -965,6 +937,96 @@ strategy_cost <- strategy_cost %>% mutate(
 
 strategy_cost$cost <- ceiling(strategy_cost$cost)
 
+#Elasctivity calcualtions
+patch_nam <- rep(1:n_patches, each = n_stages)
+stage_nam <- rep(c('juvenile', 'adult'), times = n_patches)
+
+mat.names <- matrix(NA, nrow = n_patches*n_stages, ncol = n_patches*n_stages)
+rownames(mat.names) <- patch_nam
+colnames(mat.names) <- stage_nam
+mat.names[seq(1,nrow(mat.names),by = 2),] <- 'fecund'
+mat.names[seq(2,nrow(mat.names),by = 2),] <- 'surv'
+
+mat.id <- matrix(NA, nrow = n_patches*n_stages, ncol = n_patches*n_stages)
+for(i in 1:nrow(mat.id)){
+  for(j in 1:ncol(mat.id)){
+    mat.id[i,j] <- paste0('patch: ', rownames(mat.names)[i], ', value: ', colnames(mat.names)[j], ' ', mat.names[i,j] )
+  }
+}
+
+patch_nam2r <- patch_nam2c <- rep(1:n_patches, 2)
+mat.names2 <- matrix(NA, nrow = n_patches*n_stages, ncol = n_patches*n_stages)
+rownames(mat.names2) <- patch_nam2r
+colnames(mat.names2) <- patch_nam2c
+
+mat.id2 <- matrix(NA, nrow = n_patches*n_stages, ncol = n_patches*n_stages)
+for(r in 1:n_patches){
+  for(c in 1:n_patches){
+    mat.id2[r,c] <- paste0('from patch ', colnames(mat.names2)[c], ' to patch ', rownames(mat.names2)[r], ', stage: ', 'juvenile' )
+  }
+}
+
+for(r in (n_patches+1):ncol(mat.id2)){
+  for(c in (n_patches+1):ncol(mat.id2)){
+    mat.id2[r,c] <- paste0('from patch ', colnames(mat.names2)[c], ' to patch ', rownames(mat.names2)[r], ', stage: ', 'adult' )
+  }
+}
+
+BB_harv <- A_harv <- list()
+testM <- testB <- rep(NA, length(strategy_names$harv))
+BB_e <- top5_BB <-top5_BB_indices <- top5_BB_df <- list()
+MM_e <- top5_MM <-top5_MM_indices <- top5_MM_df <- list()
+
+
+for(i in 1:length(strategy_names$harv)){ 
+  harv_mat <- unblk.diag(BB, n_stages)
+  
+  for (p in 1:10) {
+    B <- harv_mat[p]
+    
+    M <- -log(B[[1]][-1, ])  
+    M <- M + harv.strategies[i,1] #This will be adjusted per strategy
+    
+    B[[1]][-1, ] <- exp(-M)
+    harv_mat[p] <- B
+  }
+  
+  BB_harv[[i]] <- blk.diag(harv_mat)
+  
+  A_harv[[i]] <- spmm.project.matrix(P, #vec-permutation matrix,
+                                     BB = BB_harv[[i]], #block diagonal matrix for demographic paramters 
+                                     MM =  MMs[[strategy_names$deter[i]]], #block diagonal for movement paramters
+                                     grouping = grouping, #grouping projections (by patches here)
+                                     lh_order = lh_order) #order of events (demographic before movement here)
+  
+  #extracting elasticities for this strategy
+  BB_e[[i]] <- spmm.demo.elas(BB_harv[[i]],A_harv[[i]],P, MMs[[strategy_names$deter[i]]])
+  
+  testB[i] <- sum(BB_e[[i]])
+  
+  #extracting location of top 5 rates
+  top5_BB[[i]] <- order(BB_e[[i]], decreasing = TRUE)[1:5]
+  #extracting indices of those rates
+  top5_BB_indices[[i]] <- arrayInd(top5_BB[[i]], .dim = dim(BB_e[[i]]))
+  #now combine into a dataframe which matches with the rate name:
+  top5_BB_df[[i]] <- data.frame(rate = mat.id[top5_BB_indices[[1]]], value = BB_e[[i]][top5_BB[[1]]])
+  top5_BB_df[[i]]$type <- i
+  
+  
+  #do the same for MM
+  MM_e[[i]] <- spmm.move.elas( MMs[[strategy_names$deter[i]]], A_harv[[i]], P, BB_harv[[i]])
+  
+  testM[i] <- sum(MM_e[[i]])
+  
+  #extracting location of top 5 rates
+  top5_MM[[i]] <- order(MM_e[[i]], decreasing = TRUE)[1:5]
+  #extracting indices of those rates
+  top5_MM_indices[[i]] <- arrayInd(top5_MM[[i]], .dim = dim(MM_e[[i]]))
+  #now combine into a dataframe which matches with the rate name:
+  top5_MM_df[[i]] <- data.frame(rate = mat.id2[top5_MM_indices[[1]]], value = MM_e[[i]][top5_MM[[1]]])
+  top5_MM_df[[i]]$type <- i
+  
+}
 
 # #### UI ####
 ui <- navbarPage(
@@ -978,9 +1040,10 @@ ui <- navbarPage(
              p("Navigate to the 'Management Strategies' tab to explore harvest and deterrent strategies"),
              p("Navigate to the 'Navigate Tradeoffs' tab to examine tradeoffs between final biomass abundance and cost across different management strategies (via Pareto efficiency analysis)"),
              p("Navigate to the 'Sensitivity Analysis' tab to explore elasticity values of key demographic and movement parameters"),
+             p("Navigate to the 'Study Area Patches Map' tab to view a vectorized map of the 23 patches modeled in the study area"),
              tags$hr(),
              tags$div(
-               tags$h4("Map of a subset of 'patches' in the Arkansas River", style = "text-align: center;"),
+               tags$h4("Map of study area in the Arkansas River", style = "text-align: center;"),
                
                 # Add image here
                 tags$img(src = "StudyArea.png", height = "500px", style = "display: block; margin-left: auto; margin-right: auto; margin-top: 20px; margin-bottom: 20px;"),
@@ -997,7 +1060,7 @@ ui <- navbarPage(
              column(
                width = 3,
                wellPanel(
-                 helpText("Select different harvest and deterrent levels below. Select the 'All Patches' panel to see results across all locations
+                 helpText("Select your strategy by choosing a harvest level and deterrent actions. Harvest is performed across just patches 1-10. Select the 'All Patches' panel to see results across all locations
                           and select the 'Single Patch' panel to see outcomes for a specific patch"),
                  sliderInput(
                    "harv",
@@ -1059,7 +1122,7 @@ ui <- navbarPage(
   ),
   
   
-  #### Tradeoffs #####
+  ##### Tradeoffs #####
   #Navigate Tradeoffs
   tabPanel("Navigate Tradeoffs",
            fluidPage(
@@ -1078,7 +1141,7 @@ ui <- navbarPage(
                   column(
                     width = 3,  # Narrower sidebar
                     wellPanel(
-                      helpText("Select desired harvest level and popualtion and cost constraints"),
+                      helpText("Select desired harvest level (for patches 1-10), deterrant action, and biomass and cost constraints"),
                       
                       sliderInput(
                         "H",
@@ -1128,9 +1191,59 @@ ui <- navbarPage(
   
   ),
   
+  ##### Sensitivity analysis #####
   tabPanel("Sensitivity Analysis",
            fluidPage(
-             h2("Add here")
+             p("Here we evaluate elasticity values of key demographic and movement probability parameters."),
+             p("The top plot shows the top 5 elasticity values for demographic probability parameters for the base model (no management) and how these parameters perform under your selected strategy. Demographic probability parameters include: survival and fecundity for juveniles and adults at each patch."),
+             p("The bottom plot shows the top 5 elasticity values for movement probability parameters. Movement probability parameters include: movement probabilities to each patch for juveniles and adults."),
+             p("These top 5 values could be specifically targeted for monitoring efforts."),
+             tags$hr(),
+             
+             fluidRow(
+               column(
+                 width = 2,  # Narrower sidebar
+                 wellPanel(
+                   helpText("Select your strategy: combination of harvest level (for patches 1-10) and deterrant action"),
+                   
+                   sliderInput(
+                     "Hs",
+                     label = "Harvest level:",
+                     min = 0, 
+                     max = 0.2, 
+                     value = 0.05,
+                     step = 0.05
+                   ),
+                   selectInput(
+                     "Ds",
+                     label = "Deterrent action:",
+                     choices = deter_names,
+                     selected = deter_names[1]
+                   )
+                 )
+               ),
+               column(
+                 width = 10,
+                 fluidRow(
+                   column(
+                     width = 10,
+                     plotOutput("ElasticPlot", height = "400px", width = "100%"),
+                   )
+                 )
+               )
+             )
+           )
+           
+  ),
+  
+  tabPanel("Study Area Patches Map",
+           fluidPage(
+             tags$div(
+               tags$h4("Map of study area 'patches' in the Arkansas River", style = "text-align: center;"),
+               
+               # Add image here
+               tags$img(src = "VectorStudyArea.png", height = "500px", style = "display: block; margin-left: auto; margin-right: auto; margin-top: 20px; margin-bottom: 20px;"),
+             )
            )
   )
   
@@ -1161,8 +1274,8 @@ server <- function(input, output) {
     #Display summary:
     
     HTML(paste0(
-      "<b> Total final relative biomass across all patches: <b>",
-      format(sum(projs_select[, n_timesteps]), big.mark = ","), "<br>",
+      "<b> Total final relative biomass across all patches (in trillions): <b>",
+      format(round(sum(projs_select[, n_timesteps])/1e12,3), big.mark = ","), "<br>",
       "Total relative cost: $", format(cost_select, big.mark = ",", scientific = FALSE)
     ))
     
@@ -1191,12 +1304,51 @@ server <- function(input, output) {
     subset <- projs[[select]][which(patch_match == ex_patch),]
     comment(subset) <- comment(projs[[select]])
     
+    subset_juvenile <- subset[seq(1, nrow(subset), by = 2), ]
+    subset_adult <- subset[seq(2, nrow(subset), by = 2), ]
+
+    subset_df_j <- adply(subset_juvenile, c(1))
+    subset_df_j$Patch <- paste0(which(patch_names == ex_patch), ". ", ex_patch)
+    colnames(subset_df_j) <- c('Year', 'Rel.bio', 'Patch')
+    subset_df_j$class <- 'Juvenile'
     
-    spmm.plot2(subset, 
-               ylabs = "Rel. Abund.",
-               xlabs = "Years", 
-               stage_names = stage_names,
-               patch_names = ex_patch)
+    subset_df_a <- adply(subset_adult, c(1))
+    subset_df_a$Patch <- paste0(which(patch_names == ex_patch), ". ", ex_patch)
+    colnames(subset_df_a) <- c('Year', 'Rel.bio', 'Patch')
+    subset_df_a$class <- 'Adult'
+    
+    subset_df <- rbind(subset_df_j, subset_df_a)
+    
+    ggplot(subset_df)+
+      geom_point(aes(x = Year, y = Rel.bio, group = interaction(Patch, class), color = class))+
+      geom_line(aes(x = Year, y = Rel.bio, group = interaction(Patch, class), color = class, linetype = class))+
+      scale_color_manual(
+        values = c("Juvenile" = "black", "Adult" = "salmon"),
+        breaks = c("Juvenile", "Adult"),
+        name = NULL)+
+      scale_linetype_manual(
+        values = c("Juvenile" = "solid", "Adult" = "dashed"),
+        breaks = c("Juvenile", "Adult"),
+        name = NULL
+      ) +
+      scale_y_continuous(labels = unit_format(unit = "T", scale = 1e-12))+
+      theme_bw() +   
+      ylab("Relative Biomass") +
+      xlab("Years")+
+      theme(strip.background=element_rect(colour="white",
+                                          fill="white"),
+            strip.text.x = element_text(hjust = 0, margin=margin(l=0)),
+            panel.border = element_rect(colour = "gray", size = 1), 
+            axis.ticks = element_blank(),
+            text = element_text(size = 15)
+      )+
+      facet_wrap(~Patch, scales = 'free', labeller = "label_both")
+    
+    # spmm.plot2(subset, 
+    #            ylabs = "Rel. Abund.",
+    #            xlabs = "Years", 
+    #            stage_names = stage_names,
+    #            patch_names = ex_patch)
     
   })
   
@@ -1221,9 +1373,9 @@ server <- function(input, output) {
     HTML(paste0(
       "<b> Final relative biomass summary</b><br>",
       "Patch selected: ", input$patch, "<br>",
-      "Total biomass: ", format(sum(subset[1:2, n_timesteps]), big.mark = ","), "<br>",
-      "Number of juveniles: ", format(subset[1, n_timesteps], big.mark = ","), "<br>",
-      "Number of adults: ", format(subset[2, n_timesteps], big.mark = ","), "<br>"
+      "Total biomass (in trillions): ", format(round(sum(subset[1:2, n_timesteps])/1e12, 4), big.mark = ","), "<br>",
+      "Juvenile biomass (in millions): ", format(round(subset[1, n_timesteps]/1e6, 3), big.mark = ","), "<br>",
+      "Adult biomass (in trillions): ", format(round(subset[2, n_timesteps]/1e12, 3), big.mark = ","), "<br>"
     ))
 
   })
@@ -1247,18 +1399,18 @@ server <- function(input, output) {
     projs_adult <- projs_mat[seq(2, nrow(projs_mat), by = 2), ]
     
     patch_df_j <- adply(projs_juvenile, c(1,2))
-    colnames(patch_df_j) <- c('Patch', 'Year', 'Rel.abund')
+    colnames(patch_df_j) <- c('Patch', 'Year', 'Rel.bio')
     patch_df_j$class <- 'Juvenile'
     
     patch_df_a <- adply(projs_adult, c(1,2))
-    colnames(patch_df_a) <- c('Patch', 'Year', 'Rel.abund')
+    colnames(patch_df_a) <- c('Patch', 'Year', 'Rel.bio')
     patch_df_a$class <- 'Adult'
     
     patch_df <- rbind(patch_df_j, patch_df_a)
     
     ggplot(patch_df)+
-      geom_point(aes(x = Year, y = Rel.abund, group = interaction(Patch, class), color = class))+
-      geom_line(aes(x = Year, y = Rel.abund, group = interaction(Patch, class), color = class, linetype = class))+
+      geom_point(aes(x = Year, y = Rel.bio, group = interaction(Patch, class), color = class))+
+      geom_line(aes(x = Year, y = Rel.bio, group = interaction(Patch, class), color = class, linetype = class))+
       scale_color_manual(
         values = c("Juvenile" = "black", "Adult" = "salmon"),
         breaks = c("Juvenile", "Adult"),
@@ -1268,6 +1420,7 @@ server <- function(input, output) {
         breaks = c("Juvenile", "Adult"),
         name = NULL
       ) +
+      scale_y_continuous(labels = unit_format(unit = "T", scale = 1e-12))+
       theme_bw() +   
       ylab("Relative Biomass") +
       xlab("Years")+
@@ -1329,10 +1482,14 @@ server <- function(input, output) {
     colnames(strategy_outcomes)[5] <- "Strategy Type"
     colnames(strategy_outcomes)[6] <- "Selected Strategy"
     
-    if(sum(strategy_outcomes$Strategy == "Discarded Strategy") > 0){
-      colors <- c('azure4', 'lightskyblue', 'darkgreen' ) 
-    }else{
+    colors <- c('azure4', 'lightskyblue', 'darkgreen' ) 
+    
+    if(sum(strategy_outcomes$Strategy == "Discarded Strategy") == 0){
       colors <- c('lightskyblue', 'darkgreen' )
+    }
+      
+    if(sum(strategy_outcomes$Strategy == "Dominated Strategy") == 0){
+      colors <- c('azure4', 'darkgreen' )
     }
     
 
@@ -1409,12 +1566,15 @@ server <- function(input, output) {
     colnames(strategy_outcomes)[5] <- "Strategy Type"
     colnames(strategy_outcomes)[6] <- "Selected Strategy"
     
-    if(length(strategy_outcomes$Strategy == "Discarded Strategy") > 0){
-      colors <- c('azure4', 'lightskyblue', 'darkgreen' ) 
-    }else{
-      colors <- c('lightskyblue', 'darkgreen' )
+    colors <- c('azure4', 'lightskyblue', 'palegreen3' ) 
+    
+    if(sum(strategy_outcomes$Strategy == "Discarded Strategy") == 0){
+      colors <- c('lightskyblue', 'palegreen3' )
     }
     
+    if(sum(strategy_outcomes$Strategy == "Dominated Strategy") == 0){
+      colors <- c('azure4', 'palegreen3' )
+    }
     
     strategy_outcomes_table <- strategy_outcomes %>% filter(`Strategy Type` == 'Efficient Strategy' |
                                                               `Selected Strategy` == "Selected Strategy")
@@ -1448,6 +1608,72 @@ server <- function(input, output) {
     
     kbl
     
+  })
+  
+  
+  ###### Elasticity #####
+  output$ElasticPlot <- renderPlot({
+  
+    if(input$Hs == 0.15){
+      select <- which(strategy_names$harv == '0.15' & 
+                        strategy_names$deter == which(deter_names == input$Ds))
+    }else{
+      select <- which(strategy_names$harv == input$Hs & 
+                        strategy_names$deter == which(deter_names == input$Ds))
+    }
+    
+    top5_bb <- rbind(top5_BB_df[[1]], top5_BB_df[[select]])
+    
+    # Order from base
+    ordered_rates <- top5_bb %>%
+      filter(type == 1) %>%
+      arrange(value) %>%
+      pull(rate) %>% 
+      unique()
+    
+    
+    top5_bb$rate <- factor(top5_bb$rate, levels = ordered_rates)
+    
+    top5_bb$type <- ifelse(top5_bb$type == 1, 'Base model (no management)', 'Selected strategy')
+    
+    
+    # Plot
+    p1 <- ggplot(top5_bb, aes(x = value, y = rate, fill = type)) +
+      geom_col(position = "dodge", color = "black") +
+      ggtitle("Demographic elasticities") +
+      scale_fill_manual(values = c("darkslategray", "darkslategray3"))+
+      labs(x = "Elasticity", y = "Demographic probability") +
+      theme_minimal()+
+      theme(legend.position="none", text = element_text(size = 15))
+    
+
+    
+    #p1
+    
+    #combine top5 dataframes
+    top5_mm <- rbind(top5_MM_df[[1]], top5_MM_df[[select]])
+
+    # Order from base
+    ordered_rates2 <- top5_mm %>%
+      filter(type == 1) %>%
+      arrange(value) %>%
+      pull(rate) %>% 
+      unique()
+    
+    top5_mm$rate <- factor(top5_mm$rate, levels = ordered_rates2)
+
+    top5_mm$type <- ifelse(top5_mm$type == 1, 'Base model (no management)', 'Selected strategy')
+
+    #Plot
+    p2 <- ggplot(top5_mm, aes(x = value, y = rate, fill = type)) +
+      geom_col(position = "dodge", color = "black") +
+      ggtitle("Movement elasticities") +
+      scale_fill_manual(values = c("darkslategray", "darkslategray3"))+
+      labs(x = "Elasticity", y = "Movement probability", fill = "") +
+      theme_minimal()+
+      theme(legend.position = "bottom", text = element_text(size = 15))
+
+    grid.arrange(p1, p2, ncol = 1) #, widths = c(0.75, 1.2))
   })
   
 }
